@@ -52,11 +52,6 @@ export function ContactsFooter({ onNavigate, onNotify }: ContactsFooterProps) {
 
   const inView = useInViewport(contactsRef, '200px');
 
-  const handleStubLink = (e: React.MouseEvent<HTMLAnchorElement>, channel: string) => {
-    e.preventDefault();
-    onNotify(`${channel}: демо-ссылка (заглушка для портфолио)`);
-  };
-
   // Smooth bottom reveal of the monumental NEVERMIND footer wordmark
   useEffect(() => {
     const wordmark = footerWordmarkRef.current;
@@ -157,12 +152,13 @@ export function ContactsFooter({ onNavigate, onNotify }: ContactsFooterProps) {
                 — пишите напрямую в студию NEVERMIND.
               </p>
 
-              {/* Optical Contact Buttons */}
+              {/* Optical Contact Links */}
               <div className="grid grid-cols-2 sm:flex sm:flex-wrap items-center gap-3 sm:gap-3.5">
                 <OpticalButton
                   variant="dark"
-                  href="#contacts"
-                  onClick={(e) => handleStubLink(e, 'Telegram')}
+                  href="https://t.me/devbatluk"
+                  target="_blank"
+                  rel="noopener noreferrer"
                   rollingLabel="Telegram"
                   leadingIcon={<Send className="h-4 w-4 shrink-0" />}
                   trailingIcon={
@@ -174,7 +170,10 @@ export function ContactsFooter({ onNavigate, onNotify }: ContactsFooterProps) {
                 <OpticalButton
                   variant="acrylic"
                   href="#contacts"
-                  onClick={(e) => handleStubLink(e, 'Email')}
+                  onClick={(e) => {
+                    e.preventDefault();
+                    onNotify('Email: демо-ссылка (заглушка для портфолио)');
+                  }}
                   rollingLabel="Email"
                   leadingIcon={<Mail className="h-4 w-4 shrink-0" />}
                   trailingIcon={
