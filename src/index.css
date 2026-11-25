@@ -1,0 +1,505 @@
+@import "tailwindcss";
+
+@theme {
+  --font-display: "Unbounded", system-ui, -apple-system, sans-serif;
+  --font-sans: "Manrope", system-ui, -apple-system, sans-serif;
+  --color-canvas: #f6f6f4;
+  --color-surface: #ffffff;
+  --color-studio: #eeeeeb;
+  --color-ink: #0b0b0b;
+  --color-ink-muted: #666662;
+  --color-obsidian: #0a0a0a;
+}
+
+@layer base {
+  *,
+  *::before,
+  *::after {
+    box-sizing: border-box;
+    font-style: normal !important;
+  }
+
+  html {
+    background-color: #f6f6f4;
+    color: #0b0b0b;
+    font-family: var(--font-sans);
+    -webkit-font-smoothing: antialiased;
+    -moz-osx-font-smoothing: grayscale;
+    overflow-x: clip;
+  }
+
+  body {
+    margin: 0;
+    background-color: #f6f6f4;
+    color: #0b0b0b;
+    overflow-x: clip;
+    line-height: 1.5;
+  }
+
+  button,
+  a {
+    cursor: pointer;
+  }
+
+  :focus-visible {
+    outline: 1.5px solid #0b0b0b;
+    outline-offset: 3px;
+  }
+}
+
+html.lenis,
+html.lenis body {
+  height: auto;
+}
+
+.lenis.lenis-smooth {
+  scroll-behavior: auto !important;
+}
+
+.lenis.lenis-smooth [data-lenis-prevent] {
+  overscroll-behavior: contain;
+}
+
+.lenis.lenis-stopped {
+  overflow: clip;
+}
+
+/* Custom easing curves & optical pointer tracking defaults */
+:root {
+  --ease-editorial: cubic-bezier(0.22, 1, 0.36, 1);
+  --ease-snappy: cubic-bezier(0.16, 1, 0.3, 1);
+  --mx: 50%;
+  --my: 50%;
+}
+
+/* Frosted Acrylic Materials with Physical Specular Rim (GPU-tuned blur radii) */
+.acrylic-light {
+  background-color: rgba(255, 255, 255, 0.6);
+  -webkit-backdrop-filter: blur(16px) saturate(125%);
+  backdrop-filter: blur(16px) saturate(125%);
+  border: 1px solid rgba(11, 11, 11, 0.08);
+  box-shadow:
+    inset 0 1px 0 rgba(255, 255, 255, 0.78),
+    inset 0 -1px 0 rgba(11, 11, 11, 0.03),
+    0 16px 40px -12px rgba(11, 11, 11, 0.08),
+    0 2px 8px rgba(11, 11, 11, 0.04);
+}
+
+.acrylic-light-strong {
+  background-color: rgba(255, 255, 255, 0.75);
+  -webkit-backdrop-filter: blur(18px) saturate(130%);
+  backdrop-filter: blur(18px) saturate(130%);
+  border: 1px solid rgba(11, 11, 11, 0.09);
+  box-shadow:
+    inset 0 1px 0 rgba(255, 255, 255, 0.88),
+    inset 0 -1px 0 rgba(11, 11, 11, 0.04),
+    0 18px 44px -12px rgba(11, 11, 11, 0.11),
+    0 2px 8px rgba(11, 11, 11, 0.04);
+}
+
+.acrylic-dark {
+  background-color: rgba(11, 11, 11, 0.74);
+  -webkit-backdrop-filter: blur(16px) saturate(120%);
+  backdrop-filter: blur(16px) saturate(120%);
+  border: 1px solid rgba(255, 255, 255, 0.12);
+  box-shadow:
+    inset 0 1px 0 rgba(255, 255, 255, 0.16),
+    0 18px 44px -10px rgba(0, 0, 0, 0.42);
+}
+
+/* Cursor-Tracked Specular Sheen (Spotlight + 1px Rim) */
+.specular-dark,
+.specular-light,
+.specular-card {
+  position: relative;
+  overflow: hidden;
+  isolation: isolate;
+}
+
+.specular-dark::before,
+.specular-light::before,
+.specular-card::before {
+  content: "";
+  pointer-events: none;
+  position: absolute;
+  inset: 0;
+  border-radius: inherit;
+  opacity: 0;
+  transition: opacity 260ms var(--ease-editorial);
+  z-index: 1;
+}
+
+.specular-dark::before {
+  background: radial-gradient(
+    150px circle at var(--mx, 50%) var(--my, 50%),
+    rgba(255, 255, 255, 0.22),
+    rgba(255, 255, 255, 0.06) 42%,
+    transparent 72%
+  );
+}
+
+.specular-light::before,
+.specular-card::before {
+  background: radial-gradient(
+    190px circle at var(--mx, 50%) var(--my, 50%),
+    rgba(255, 255, 255, 0.78),
+    rgba(255, 255, 255, 0.18) 42%,
+    transparent 72%
+  );
+}
+
+.specular-dark::after,
+.specular-light::after,
+.specular-card::after {
+  content: "";
+  pointer-events: none;
+  position: absolute;
+  inset: 0;
+  border-radius: inherit;
+  padding: 1px;
+  -webkit-mask: linear-gradient(#fff 0 0) content-box, linear-gradient(#fff 0 0);
+  -webkit-mask-composite: xor;
+  mask-composite: exclude;
+  opacity: 0;
+  transition: opacity 260ms var(--ease-editorial);
+  z-index: 2;
+}
+
+.specular-dark::after {
+  background: radial-gradient(
+    130px circle at var(--mx, 50%) var(--my, 50%),
+    rgba(255, 255, 255, 0.52),
+    rgba(255, 255, 255, 0.1) 50%,
+    transparent 75%
+  );
+}
+
+.specular-light::after,
+.specular-card::after {
+  background: radial-gradient(
+    140px circle at var(--mx, 50%) var(--my, 50%),
+    rgba(255, 255, 255, 0.95),
+    rgba(11, 11, 11, 0.16) 48%,
+    transparent 76%
+  );
+}
+
+@media (hover: hover) and (pointer: fine) {
+  .specular-dark:hover::before,
+  .specular-dark:hover::after,
+  .specular-light:hover::before,
+  .specular-light:hover::after,
+  .specular-card:hover::before,
+  .specular-card:hover::after {
+    opacity: 1;
+  }
+}
+
+/* Rolling navigation text hover with optical micro-blur (paired with sliding capsule pill) */
+.nav-link-roll {
+  position: relative;
+  display: inline-flex;
+  align-items: center;
+  overflow: hidden;
+}
+
+.nav-link-roll__inner {
+  display: inline-block;
+  position: relative;
+  transition: transform 0.38s var(--ease-editorial);
+}
+
+.nav-link-roll__primary {
+  display: inline-block;
+  transition:
+    filter 0.32s var(--ease-editorial),
+    opacity 0.32s var(--ease-editorial);
+}
+
+.nav-link-roll__clone {
+  position: absolute;
+  left: 0;
+  top: 118%;
+  width: 100%;
+  opacity: 0;
+  filter: blur(1.5px);
+  transition:
+    filter 0.32s var(--ease-editorial),
+    opacity 0.32s var(--ease-editorial);
+}
+
+.nav-link-roll:hover .nav-link-roll__inner,
+.nav-link-roll:focus-visible .nav-link-roll__inner {
+  transform: translateY(-118%);
+}
+
+.nav-link-roll:hover .nav-link-roll__primary,
+.nav-link-roll:focus-visible .nav-link-roll__primary {
+  filter: blur(1.5px);
+  opacity: 0.45;
+}
+
+.nav-link-roll:hover .nav-link-roll__clone,
+.nav-link-roll:focus-visible .nav-link-roll__clone {
+  filter: blur(0px);
+  opacity: 1;
+}
+
+/* Optical button text roll with micro-blur */
+.btn-roll {
+  position: relative;
+  display: inline-flex;
+  align-items: center;
+  overflow: hidden;
+  line-height: 1.25;
+}
+
+.btn-roll__inner {
+  position: relative;
+  display: inline-block;
+  transition: transform 0.36s var(--ease-editorial);
+}
+
+.btn-roll__primary {
+  display: inline-block;
+  transition:
+    filter 0.3s var(--ease-editorial),
+    opacity 0.3s var(--ease-editorial);
+}
+
+.btn-roll__clone {
+  position: absolute;
+  left: 0;
+  top: 120%;
+  width: 100%;
+  opacity: 0;
+  filter: blur(1.5px);
+  transition:
+    filter 0.3s var(--ease-editorial),
+    opacity 0.3s var(--ease-editorial);
+}
+
+.optical-trigger:hover .btn-roll__inner,
+.optical-trigger:focus-visible .btn-roll__inner,
+.btn-roll:hover .btn-roll__inner {
+  transform: translateY(-120%);
+}
+
+.optical-trigger:hover .btn-roll__primary,
+.optical-trigger:focus-visible .btn-roll__primary,
+.btn-roll:hover .btn-roll__primary {
+  filter: blur(1.5px);
+  opacity: 0.45;
+}
+
+.optical-trigger:hover .btn-roll__clone,
+.optical-trigger:focus-visible .btn-roll__clone,
+.btn-roll:hover .btn-roll__clone {
+  filter: blur(0px);
+  opacity: 1;
+}
+
+/* Studio image blend so off-white backgrounds integrate seamlessly with studio cards */
+.studio-blend {
+  mix-blend-mode: multiply;
+  filter: brightness(1.08) contrast(1.06);
+}
+
+/* Single-pass studio cutout shadow (paired with two-layer studio floor gradients) */
+.cutout-shadow {
+  filter: drop-shadow(0 20px 26px rgba(0, 0, 0, 0.14));
+}
+
+/* Pre-softened pure CSS studio orbs & floor shadows (zero runtime Gaussian blur cost) */
+.studio-orb-light {
+  background: radial-gradient(
+    circle,
+    rgba(255, 255, 255, 0.82) 0%,
+    rgba(255, 255, 255, 0.34) 38%,
+    rgba(255, 255, 255, 0) 72%
+  );
+}
+
+.studio-orb-dark {
+  background: radial-gradient(
+    circle,
+    rgba(11, 11, 11, 0.055) 0%,
+    rgba(11, 11, 11, 0.022) 40%,
+    rgba(11, 11, 11, 0) 72%
+  );
+}
+
+.floor-shadow-contact {
+  background: radial-gradient(
+    ellipse at center,
+    rgba(0, 0, 0, 0.24) 0%,
+    rgba(0, 0, 0, 0.08) 48%,
+    rgba(0, 0, 0, 0) 74%
+  );
+}
+
+.floor-shadow-ambient {
+  background: radial-gradient(
+    ellipse at center,
+    rgba(0, 0, 0, 0.13) 0%,
+    rgba(0, 0, 0, 0.05) 45%,
+    rgba(0, 0, 0, 0) 74%
+  );
+}
+
+/* Pre-baked tiny 64x64 anti-banding dither tile (cached on GPU, 0ms per scroll frame) */
+.fade-dither-tile {
+  background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='64' height='64'%3E%3Cfilter id='n'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='0.82' numOctaves='2' stitchTiles='stitch'/%3E%3C/filter%3E%3Crect width='64' height='64' filter='url(%23n)'/%3E%3C/svg%3E");
+  background-repeat: repeat;
+  background-size: 64px 64px;
+  opacity: 0.032;
+  mix-blend-mode: overlay;
+}
+
+/* Hide scrollbars cleanly where horizontal pill strip is used on mobile */
+.no-scrollbar {
+  -ms-overflow-style: none;
+  scrollbar-width: none;
+}
+.no-scrollbar::-webkit-scrollbar {
+  display: none;
+}
+
+/* Subtle studio gradient backdrop */
+.studio-backdrop {
+  background-color: #f4f4f1;
+  background-image: radial-gradient(
+    ellipse 60% 52% at 50% 48%,
+    rgba(255, 255, 255, 0.96) 0%,
+    rgba(244, 244, 241, 0.86) 55%,
+    rgba(232, 232, 228, 0.72) 100%
+  );
+}
+
+/* Passive Studio Light Drift & Optical Reveal Animations */
+@keyframes studio-drift-a {
+  0% {
+    transform: translate3d(-3%, -2%, 0) scale(1);
+  }
+  100% {
+    transform: translate3d(4%, 3%, 0) scale(1.08);
+  }
+}
+
+@keyframes studio-drift-b {
+  0% {
+    transform: translate3d(3%, 2%, 0) scale(1.04);
+  }
+  100% {
+    transform: translate3d(-4%, -3%, 0) scale(0.96);
+  }
+}
+
+@keyframes garment-levitate {
+  0%,
+  100% {
+    transform: translate3d(0, -4px, 0);
+  }
+  50% {
+    transform: translate3d(0, 4px, 0);
+  }
+}
+
+@keyframes shadow-breathe {
+  0%,
+  100% {
+    transform: scaleX(0.92) scaleY(0.92);
+    opacity: 0.72;
+  }
+  50% {
+    transform: scaleX(1.04) scaleY(1.04);
+    opacity: 1;
+  }
+}
+
+@keyframes optical-roll-in {
+  from {
+    opacity: 0;
+    transform: translate3d(0, 7px, 0);
+    filter: blur(2.5px);
+  }
+  to {
+    opacity: 1;
+    transform: translate3d(0, 0, 0);
+    filter: blur(0px);
+  }
+}
+
+@keyframes catalog-card-in {
+  from {
+    opacity: 0;
+    transform: translate3d(0, 10px, 0);
+    filter: blur(4px);
+  }
+  to {
+    opacity: 1;
+    transform: translate3d(0, 0, 0);
+    filter: blur(0px);
+  }
+}
+
+.animate-studio-drift-a {
+  animation: studio-drift-a 12s ease-in-out infinite alternate;
+}
+
+.animate-studio-drift-b {
+  animation: studio-drift-b 14s ease-in-out infinite alternate;
+}
+
+.animate-garment-levitate {
+  animation: garment-levitate 4.5s ease-in-out infinite;
+}
+
+.animate-shadow-breathe {
+  animation: shadow-breathe 4.5s ease-in-out infinite;
+}
+
+.animate-optical-roll-in {
+  animation: optical-roll-in 300ms var(--ease-editorial) both;
+}
+
+.animate-catalog-card-in {
+  animation: catalog-card-in 420ms var(--ease-editorial) both;
+}
+
+/* Pause off-screen ambient animations & active track-scroll levitation cleanly */
+[data-inview="false"] .animate-studio-drift-a,
+[data-inview="false"] .animate-studio-drift-b,
+[data-inview="false"] .animate-garment-levitate,
+[data-inview="false"] .animate-shadow-breathe,
+[data-moving="true"] .animate-garment-levitate,
+[data-moving="true"] .animate-shadow-breathe {
+  animation-play-state: paused !important;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .animate-studio-drift-a,
+  .animate-studio-drift-b,
+  .animate-garment-levitate,
+  .animate-shadow-breathe,
+  .animate-optical-roll-in,
+  .animate-catalog-card-in {
+    animation: none !important;
+  }
+
+  .nav-link-roll__inner,
+  .nav-link-roll__primary,
+  .nav-link-roll__clone,
+  .btn-roll__inner,
+  .btn-roll__primary,
+  .btn-roll__clone,
+  .specular-dark::before,
+  .specular-dark::after,
+  .specular-light::before,
+  .specular-light::after,
+  .specular-card::before,
+  .specular-card::after {
+    transition-duration: 0.01ms !important;
+    filter: none !important;
+  }
+}

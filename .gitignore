@@ -1,0 +1,27 @@
+# Dependencies
+node_modules/
+
+# Build output
+dist/
+
+# Local backups & raw source media (not needed in Git/Vercel)
+backups/
+photos/
+references/
+
+# Vercel CLI
+.vercel/
+
+# Environment files
+.env
+.env.*
+
+# Logs & OS artifacts
+*.log
+.DS_Store
+Thumbs.db
+*.tsbuildinfo
+
+# Editor
+.vscode/*
+!.vscode/extensions.json
