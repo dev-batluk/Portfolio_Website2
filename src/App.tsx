@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useRef, useState } from 'react';
+import { lazy, Suspense, useCallback, useEffect, useRef, useState } from 'react';
 import Lenis from 'lenis';
 import gsap from 'gsap';
 import { ScrollTrigger } from 'gsap/ScrollTrigger';
@@ -9,8 +9,21 @@ import { Bestsellers } from './components/Bestsellers';
 import { Catalog } from './components/Catalog';
 import { ContactsFooter } from './components/ContactsFooter';
 import { QuickViewModal } from './components/QuickViewModal';
+import { CartDrawer } from './components/CartDrawer';
+import { CheckoutModal } from './components/CheckoutModal';
+import { CookieBanner } from './components/CookieBanner';
+import { LegalModal, type LegalDocId } from './components/LegalModal';
+import { CartProvider, useCart } from './context/CartContext';
+import { StoreDataProvider } from './context/StoreDataContext';
 import { lenisScrollState } from './components/OpticalPrimitives';
 import type { BaseProduct } from './data/products';
+
+const AdminApp = lazy(() => import('./admin/AdminApp'));
+
+function checkIsAdminPath(): boolean {
+  if (typeof window === 'undefined') return false;
+  return /^\/admin(\/|$)/.test(window.location.pathname);
+}
 
 gsap.registerPlugin(ScrollTrigger);
 
@@ -21,10 +34,21 @@ interface QuickViewState {
 
 const SECTION_IDS = ['hero', 'about', 'bestsellers', 'catalog', 'contacts'] as const;
 
-export default function App() {
+function AppContent() {
+  const {
+    totalItems,
+    isCartOpen,
+    isCheckoutOpen,
+    isOverlayHandoff,
+    openCart,
+    closeCart,
+    addItem,
+  } = useCart();
+
   const lenisRef = useRef<Lenis | null>(null);
   const toastTimerRef = useRef<number | null>(null);
   const toastClearRef = useRef<number | null>(null);
+  const quickAddTimerRef = useRef<number | null>(null);
   const activeSectionRef = useRef('hero');
   const isOverDarkRef = useRef(false);
 
@@ -32,6 +56,9 @@ export default function App() {
   const [isOverDarkFooter, setIsOverDarkFooter] = useState(false);
   const [mobileMenuOpen, setMobileMenuOpen] = useState(false);
   const [quickViewState, setQuickViewState] = useState<QuickViewState | null>(null);
+  const [isQuickAddHandoff, setIsQuickAddHandoff] = useState(false);
+  const [activeLegalDoc, setActiveLegalDoc] = useState<LegalDocId | null>(null);
+  const [cookieBannerForcedOpen, setCookieBannerForcedOpen] = useState(false);
   const [toastMessage, setToastMessage] = useState<string | null>(null);
   const [toastVisible, setToastVisible] = useState(false);
 
@@ -135,22 +162,39 @@ export default function App() {
     };
   }, []);
 
-  // Lock page smooth-scroll cleanly while Quick View modal or mobile menu drawer is open
+  // Lock page smooth-scroll cleanly while any modal, drawer, handoff, or mobile menu is open
   useEffect(() => {
     const lenis = lenisRef.current;
     if (!lenis) return;
-    if (quickViewState || mobileMenuOpen) {
+    if (
+      quickViewState ||
+      mobileMenuOpen ||
+      isCartOpen ||
+      isCheckoutOpen ||
+      isOverlayHandoff ||
+      isQuickAddHandoff ||
+      Boolean(activeLegalDoc)
+    ) {
       lenis.stop();
       lenisScrollState.velocity = 0;
     } else {
       lenis.start();
     }
-  }, [quickViewState, mobileMenuOpen]);
+  }, [
+    quickViewState,
+    mobileMenuOpen,
+    isCartOpen,
+    isCheckoutOpen,
+    isOverlayHandoff,
+    isQuickAddHandoff,
+    activeLegalDoc,
+  ]);
 
   useEffect(() => {
     return () => {
       if (toastTimerRef.current) window.clearTimeout(toastTimerRef.current);
       if (toastClearRef.current) window.clearTimeout(toastClearRef.current);
+      if (quickAddTimerRef.current) window.clearTimeout(quickAddTimerRef.current);
     };
   }, []);
 
@@ -169,9 +213,67 @@ export default function App() {
     }, 2800);
   }, []);
 
-  const handleQuickView = useCallback((product: BaseProduct, initialSize?: string) => {
-    setQuickViewState({ product, initialSize });
+  const clearQuickAddTimer = useCallback(() => {
+    if (quickAddTimerRef.current !== null) {
+      window.clearTimeout(quickAddTimerRef.current);
+      quickAddTimerRef.current = null;
+    }
+    setIsQuickAddHandoff(false);
   }, []);
+
+  const handleQuickView = useCallback(
+    (product: BaseProduct, initialSize?: string) => {
+      clearQuickAddTimer();
+      setQuickViewState({ product, initialSize });
+    },
+    [clearQuickAddTimer],
+  );
+
+  const handleQuickAdd = useCallback(
+    (product: BaseProduct, size: string) => {
+      clearQuickAddTimer();
+      const wasQuickViewOpen = quickViewState !== null;
+      const prefersReduced =
+        typeof window !== 'undefined' &&
+        window.matchMedia('(prefers-reduced-motion: reduce)').matches;
+
+      const res = addItem(product, size, {
+        openDrawer: !(wasQuickViewOpen && !prefersReduced),
+      });
+
+      if (!res.ok) {
+        showToast(
+          res.reason === 'out_of_stock'
+            ? `Размер ${size} временно распродан (Sold Out)`
+            : `Достигнут лимит остатка (${res.maxStock ?? 0} шт.)`,
+        );
+        return;
+      }
+
+      if (wasQuickViewOpen && !prefersReduced) {
+        setQuickViewState(null);
+        setIsQuickAddHandoff(true);
+        quickAddTimerRef.current = window.setTimeout(() => {
+          quickAddTimerRef.current = null;
+          setIsQuickAddHandoff(false);
+          openCart();
+        }, 110);
+        return;
+      }
+
+      setQuickViewState(null);
+    },
+    [quickViewState, addItem, openCart, clearQuickAddTimer, showToast],
+  );
+
+  const handleSelectFromCart = useCallback(
+    (product: BaseProduct, size: string) => {
+      clearQuickAddTimer();
+      closeCart();
+      setQuickViewState({ product, initialSize: size });
+    },
+    [closeCart, clearQuickAddTimer],
+  );
 
   const scrollToY = useCallback((targetY: number) => {
     if (lenisRef.current) {
@@ -199,23 +301,66 @@ export default function App() {
       <Header
         activeSection={activeSection}
         isOverDark={isOverDarkFooter}
+        cartCount={totalItems}
         onNavigate={navigateToSection}
+        onOpenCart={() => {
+          clearQuickAddTimer();
+          openCart();
+        }}
         onMobileMenuChange={setMobileMenuOpen}
       />
 
       <main>
         <Hero onScrollToBestsellers={() => navigateToSection('bestsellers')} />
         <About />
-        <Bestsellers onQuickView={handleQuickView} onScrollToY={scrollToY} />
-        <Catalog onQuickView={handleQuickView} onScrollToY={scrollToY} />
-        <ContactsFooter onNavigate={navigateToSection} onNotify={showToast} />
+        <Bestsellers
+          onQuickView={handleQuickView}
+          onQuickAdd={handleQuickAdd}
+          onScrollToY={scrollToY}
+        />
+        <Catalog
+          onQuickView={handleQuickView}
+          onQuickAdd={handleQuickAdd}
+          onScrollToY={scrollToY}
+        />
+        <ContactsFooter
+          onNavigate={navigateToSection}
+          onNotify={showToast}
+          onOpenLegal={setActiveLegalDoc}
+          onOpenCookieSettings={() => setCookieBannerForcedOpen(true)}
+        />
       </main>
 
       <QuickViewModal
         product={quickViewState?.product ?? null}
         initialSize={quickViewState?.initialSize}
         onClose={() => setQuickViewState(null)}
+        onAddToCart={handleQuickAdd}
+      />
+
+      <CartDrawer
+        onNavigateToCatalog={() => navigateToSection('catalog')}
+        onSelectProduct={handleSelectFromCart}
         onNotify={showToast}
+      />
+
+      <CheckoutModal
+        onNavigateToCatalog={() => navigateToSection('catalog')}
+        onNotify={showToast}
+        onOpenLegal={setActiveLegalDoc}
+        isLegalOpen={Boolean(activeLegalDoc)}
+      />
+
+      <CookieBanner
+        forcedOpen={cookieBannerForcedOpen}
+        onDismissForced={() => setCookieBannerForcedOpen(false)}
+        onOpenLegal={setActiveLegalDoc}
+      />
+
+      <LegalModal
+        docId={activeLegalDoc}
+        onSelectDoc={setActiveLegalDoc}
+        onClose={() => setActiveLegalDoc(null)}
       />
 
       {/* Smoky frosted dark glass toast feedback */}
@@ -235,5 +380,37 @@ export default function App() {
         )}
       </div>
     </div>
+  );
+}
+
+export default function App() {
+  const [isAdminRoute, setIsAdminRoute] = useState<boolean>(checkIsAdminPath);
+
+  useEffect(() => {
+    const onPopState = () => setIsAdminRoute(checkIsAdminPath());
+    window.addEventListener('popstate', onPopState);
+    return () => window.removeEventListener('popstate', onPopState);
+  }, []);
+
+  return (
+    <StoreDataProvider>
+      {isAdminRoute ? (
+        <Suspense
+          fallback={
+            <div className="min-h-screen bg-[#F6F6F4] flex items-center justify-center">
+              <div className="acrylic-light-strong rounded-full px-5 py-2.5 text-xs font-semibold uppercase tracking-[0.14em] text-[#0B0B0B]">
+                NEVERMIND ADMIN...
+              </div>
+            </div>
+          }
+        >
+          <AdminApp />
+        </Suspense>
+      ) : (
+        <CartProvider>
+          <AppContent />
+        </CartProvider>
+      )}
+    </StoreDataProvider>
   );
 }

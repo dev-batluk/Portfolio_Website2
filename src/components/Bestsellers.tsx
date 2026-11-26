@@ -1,8 +1,10 @@
-import { useEffect, useRef, useState } from 'react';
+import { useEffect, useMemo, useRef, useState } from 'react';
 import gsap from 'gsap';
 import { ScrollTrigger } from 'gsap/ScrollTrigger';
 import { ArrowUpRight, ChevronLeft, ChevronRight, Eye } from 'lucide-react';
-import { BESTSELLERS, type BaseProduct, type BestsellerItem } from '../data/products';
+import type { BaseProduct, BestsellerItem } from '../data/products';
+import { useStoreData } from '../context/StoreDataContext';
+import { useResolvedImage } from '../lib/imageStore';
 import {
   OpticalButton,
   useInViewport,
@@ -13,21 +15,10 @@ gsap.registerPlugin(ScrollTrigger);
 
 interface BestsellersProps {
   onQuickView: (product: BaseProduct, initialSize?: string) => void;
+  onQuickAdd: (product: BaseProduct, size: string) => void;
   onScrollToY: (y: number) => void;
 }
 
-const SLIDE_SNAP_SCROLL_FACTORS = [0.02, 0.37, 0.69, 0.98];
-const DESKTOP_SCROLL_VH = 1.4;
-
-// 2 clones on each side for seamless peeking loop without empty edges: [bs3, bs4, bs1, bs2, bs3, bs4, bs1, bs2]
-const MOBILE_SLIDES: BestsellerItem[] = [
-  BESTSELLERS[BESTSELLERS.length - 2],
-  BESTSELLERS[BESTSELLERS.length - 1],
-  ...BESTSELLERS,
-  BESTSELLERS[0],
-  BESTSELLERS[1],
-];
-const MOBILE_BASE_IDX = 2;
 const MOBILE_SLIDE_WIDTH_PCT = 62;
 const MOBILE_CENTER_OFFSET_PCT = (100 - MOBILE_SLIDE_WIDTH_PCT) / 2; // 19%
 
@@ -47,7 +38,109 @@ function useIsDesktop(): boolean {
   return isDesktop;
 }
 
-export function Bestsellers({ onQuickView, onScrollToY }: BestsellersProps) {
+interface BestsellerSlideVisualProps {
+  item: BestsellerItem;
+  isCurrent: boolean;
+  showModelNow: boolean;
+  compact?: boolean;
+}
+
+function BestsellerSlideVisual({
+  item,
+  isCurrent,
+  showModelNow,
+  compact = false,
+}: BestsellerSlideVisualProps) {
+  const resolvedImage = useResolvedImage(item.image);
+  const resolvedModelImage = useResolvedImage(item.modelImage);
+
+  return (
+    <>
+      {/* Normalized garment cutout with gentle passive levitation while idle */}
+      <div
+        className={`absolute inset-0 flex items-center justify-center ${
+          isCurrent && !showModelNow ? 'animate-garment-levitate' : ''
+        }`}
+      >
+        <img
+          src={resolvedImage || item.image}
+          alt={item.title}
+          loading="eager"
+          decoding="async"
+          draggable={false}
+          className={`${
+            compact ? 'max-h-[86%] max-w-[90%]' : 'max-h-[84%] max-w-[84%]'
+          } object-contain transition-[opacity,transform,filter] ${
+            compact ? 'duration-400' : 'duration-500'
+          } ease-[cubic-bezier(0.22,1,0.36,1)] motion-reduce:blur-none ${
+            showModelNow
+              ? 'opacity-0 scale-95 translate-y-2 blur-[5px]'
+              : isCurrent
+                ? 'cutout-shadow opacity-100 scale-100 translate-y-0 blur-0'
+                : 'opacity-100 scale-100 translate-y-0 blur-0'
+          }`}
+        />
+      </div>
+
+      {/* Normalized model cutout (grounded, no levitation) */}
+      <img
+        src={resolvedModelImage || item.modelImage}
+        alt={`${item.title} на модели`}
+        loading="eager"
+        decoding="async"
+        draggable={false}
+        className={`absolute inset-0 m-auto ${
+          compact ? 'max-h-[96%] max-w-[90%]' : 'max-h-[94%] max-w-[88%]'
+        } object-contain transition-[opacity,transform,filter] ${
+          compact ? 'duration-400' : 'duration-500'
+        } ease-[cubic-bezier(0.22,1,0.36,1)] motion-reduce:blur-none ${
+          showModelNow
+            ? 'cutout-shadow opacity-100 scale-100 translate-y-0 blur-0'
+            : compact
+              ? 'opacity-0 scale-105 blur-[5px] pointer-events-none'
+              : 'opacity-0 scale-[1.03] -translate-y-2 blur-[5px] pointer-events-none'
+        }`}
+      />
+    </>
+  );
+}
+
+export function Bestsellers({ onQuickView, onQuickAdd, onScrollToY }: BestsellersProps) {
+  const { bestsellers, getAvailableStock } = useStoreData();
+  const slideCount = bestsellers.length;
+  const bestsellersKey = bestsellers.map((b) => b.id).join(',');
+
+  const desktopScrollVh = useMemo(
+    () => Math.max(1.0, Number(((slideCount - 1) * 0.48).toFixed(2))),
+    [slideCount],
+  );
+  const wrapperHeightVh = Math.round((desktopScrollVh + 2) * 100);
+
+  const snapFactors = useMemo(() => {
+    if (slideCount <= 1) return [0];
+    const dwell = 0.06;
+    const totalDwell = dwell * slideCount;
+    const stepDur = Math.max(0.05, (1 - totalDwell) / (slideCount - 1));
+    return bestsellers.map((_, idx) => {
+      if (idx === 0) return 0.02;
+      if (idx === slideCount - 1) return 0.98;
+      return Math.min(0.96, Math.max(0.04, idx * (dwell + stepDur) + dwell * 0.5));
+    });
+  }, [bestsellers, slideCount]);
+
+  // 2 clones on each side for seamless peeking loop without empty edges
+  const mobileSlides = useMemo<BestsellerItem[]>(() => {
+    if (slideCount < 2) return bestsellers;
+    return [
+      bestsellers[slideCount - 2],
+      bestsellers[slideCount - 1],
+      ...bestsellers,
+      bestsellers[0],
+      bestsellers[1],
+    ];
+  }, [bestsellers, slideCount]);
+  const mobileBaseIdx = slideCount >= 2 ? 2 : 0;
+
   const sectionRef = useRef<HTMLElement>(null);
   const desktopWrapperRef = useRef<HTMLDivElement>(null);
   const stickyStageRef = useRef<HTMLDivElement>(null);
@@ -67,8 +160,8 @@ export function Bestsellers({ onQuickView, onScrollToY }: BestsellersProps) {
   const [desktopActiveIdx, setDesktopActiveIdx] = useState(0);
   const [desktopHoverModel, setDesktopHoverModel] = useState(false);
 
-  // Mobile infinite peeking carousel state (indices 2..5 map to BESTSELLERS 0..3)
-  const [mobileTrackIdx, setMobileTrackIdx] = useState(MOBILE_BASE_IDX);
+  // Mobile infinite peeking carousel state
+  const [mobileTrackIdx, setMobileTrackIdx] = useState(mobileBaseIdx);
   const [mobileAnimate, setMobileAnimate] = useState(true);
   const [mobileShowModel, setMobileShowModel] = useState(false);
   const [dragOffsetPx, setDragOffsetPx] = useState(0);
@@ -76,24 +169,32 @@ export function Bestsellers({ onQuickView, onScrollToY }: BestsellersProps) {
   const lastDesktopIdxRef = useRef(0);
   const suppressClickRef = useRef(false);
 
-  const activeBestseller = BESTSELLERS[desktopActiveIdx];
+  const safeDesktopIdx = Math.min(desktopActiveIdx, Math.max(0, slideCount - 1));
+  const activeBestseller = bestsellers[safeDesktopIdx] ?? bestsellers[0];
 
   const realMobileIdx =
-    (((mobileTrackIdx - MOBILE_BASE_IDX) % BESTSELLERS.length) + BESTSELLERS.length) %
-    BESTSELLERS.length;
-  const activeMobileItem = BESTSELLERS[realMobileIdx];
+    slideCount > 0
+      ? (((mobileTrackIdx - mobileBaseIdx) % slideCount) + slideCount) % slideCount
+      : 0;
+  const activeMobileItem = bestsellers[realMobileIdx] ?? bestsellers[0];
 
-  // Refresh ScrollTrigger whenever viewport switches across the 1024px breakpoint
+  useEffect(() => {
+    setDesktopActiveIdx((prev) => Math.min(prev, Math.max(0, slideCount - 1)));
+    setMobileTrackIdx(mobileBaseIdx);
+    setMobileShowModel(false);
+  }, [slideCount, mobileBaseIdx, bestsellersKey]);
+
+  // Refresh ScrollTrigger whenever viewport switches across 1024px or bestseller count changes
   useEffect(() => {
     const raf = requestAnimationFrame(() => {
       ScrollTrigger.refresh();
     });
     return () => cancelAnimationFrame(raf);
-  }, [isDesktop]);
+  }, [isDesktop, slideCount, bestsellersKey]);
 
-  // Desktop GSAP horizontal scrub + decoupled inner content blur + uniform progress fill + Catalog overlap
+  // Dynamic Desktop GSAP horizontal scrub + decoupled inner content blur + uniform progress fill + Catalog overlap
   useEffect(() => {
-    if (!isDesktop) return;
+    if (!isDesktop || slideCount < 2) return;
 
     const ctx = gsap.context(() => {
       const wrapper = desktopWrapperRef.current;
@@ -109,20 +210,25 @@ export function Bestsellers({ onQuickView, onScrollToY }: BestsellersProps) {
         return;
       }
 
+      const stepPercent = 100 / slideCount;
+      const baseFill = 1 / slideCount;
+      const maxIndex = slideCount - 1;
+
       const tl = gsap.timeline({
         scrollTrigger: {
           trigger: wrapper,
           start: 'top top',
-          end: () => `+=${window.innerHeight * DESKTOP_SCROLL_VH}`,
+          end: () => `+=${window.innerHeight * desktopScrollVh}`,
           scrub: 0.25,
           invalidateOnRefresh: true,
           onUpdate: () => {
             const currentXPercent = Number(gsap.getProperty(track, 'xPercent')) || 0;
-            const visualPos = Math.max(0, Math.min(3, -currentXPercent / 25));
+            const visualPos = Math.max(0, Math.min(maxIndex, -currentXPercent / stepPercent));
 
             if (progressBar) {
-              const uniformFill = 0.25 + (visualPos / 3) * 0.75;
-              progressBar.style.transform = `scaleX(${Math.max(0.25, Math.min(1, uniformFill)).toFixed(4)})`;
+              const uniformFill =
+                baseFill + (visualPos / Math.max(1, maxIndex)) * (1 - baseFill);
+              progressBar.style.transform = `scaleX(${Math.max(baseFill, Math.min(1, uniformFill)).toFixed(4)})`;
             }
 
             if (bgIndex) {
@@ -132,16 +238,13 @@ export function Bestsellers({ onQuickView, onScrollToY }: BestsellersProps) {
             const nearest = Math.round(visualPos);
             const distFromCenter = Math.abs(visualPos - nearest);
 
-            // Pause garment levitation during slide motion so animations never fight scroll
             stageInner.dataset.moving = distFromCenter > 0.03 ? 'true' : 'false';
 
-            // Outer .acrylic-light card animates ONLY compositor-friendly opacity + transform
             const opacityVal = Math.max(0.22, 1 - distFromCenter * 1.52);
             const shiftY = distFromCenter * 14;
             infoCard.style.opacity = opacityVal.toFixed(3);
             infoCard.style.transform = `translate3d(0, ${shiftY.toFixed(1)}px, 0)`;
 
-            // Inner content receives transition blur so backdrop-filter on the glass shell stays cached
             const blurPx = Math.min(6, distFromCenter * 14);
             infoCardContent.style.filter = blurPx < 0.15 ? 'none' : `blur(${blurPx.toFixed(2)}px)`;
 
@@ -154,14 +257,22 @@ export function Bestsellers({ onQuickView, onScrollToY }: BestsellersProps) {
         },
       });
 
-      tl.set(track, { xPercent: 0 })
-        .to(track, { xPercent: 0, duration: 0.06, ease: 'none' })
-        .to(track, { xPercent: -25, duration: 0.27, ease: 'power2.inOut' })
-        .to(track, { xPercent: -25, duration: 0.06, ease: 'none' })
-        .to(track, { xPercent: -50, duration: 0.27, ease: 'power2.inOut' })
-        .to(track, { xPercent: -50, duration: 0.06, ease: 'none' })
-        .to(track, { xPercent: -75, duration: 0.22, ease: 'power2.inOut' })
-        .to(track, { xPercent: -75, duration: 0.06, ease: 'none' });
+      const dwell = 0.06;
+      const transitionDur = Math.max(0.05, (1 - dwell * slideCount) / maxIndex);
+
+      tl.set(track, { xPercent: 0 });
+      for (let i = 0; i < slideCount; i += 1) {
+        const targetX = -(i * stepPercent);
+        tl.to(track, { xPercent: targetX, duration: dwell, ease: 'none' });
+        if (i < maxIndex) {
+          const nextX = -((i + 1) * stepPercent);
+          tl.to(track, {
+            xPercent: nextX,
+            duration: transitionDur,
+            ease: 'power2.inOut',
+          });
+        }
+      }
 
       const catalogEl = document.getElementById('catalog');
       if (catalogEl) {
@@ -201,14 +312,14 @@ export function Bestsellers({ onQuickView, onScrollToY }: BestsellersProps) {
     }, desktopWrapperRef);
 
     return () => ctx.revert();
-  }, [isDesktop]);
+  }, [isDesktop, slideCount, desktopScrollVh, bestsellersKey]);
 
   const jumpToDesktopSlide = (idx: number) => {
     const wrapper = desktopWrapperRef.current;
     if (!wrapper) return;
     const wrapperTop = wrapper.getBoundingClientRect().top + window.scrollY;
-    const targetY =
-      wrapperTop + window.innerHeight * DESKTOP_SCROLL_VH * SLIDE_SNAP_SCROLL_FACTORS[idx];
+    const factor = snapFactors[idx] ?? 0;
+    const targetY = wrapperTop + window.innerHeight * desktopScrollVh * factor;
     onScrollToY(targetY);
   };
 
@@ -216,31 +327,33 @@ export function Bestsellers({ onQuickView, onScrollToY }: BestsellersProps) {
   const goToMobileRealIndex = (realIdx: number) => {
     setMobileShowModel(false);
     setMobileAnimate(true);
-    setMobileTrackIdx(MOBILE_BASE_IDX + realIdx);
+    setMobileTrackIdx(mobileBaseIdx + realIdx);
   };
 
   const handleMobileStep = (dir: 1 | -1) => {
+    if (slideCount < 2) return;
     setMobileShowModel(false);
     setMobileAnimate(true);
     setMobileTrackIdx((prev) => {
       const safeBase =
         prev <= 0
-          ? prev + BESTSELLERS.length
-          : prev >= MOBILE_SLIDES.length - 1
-            ? prev - BESTSELLERS.length
+          ? prev + slideCount
+          : prev >= mobileSlides.length - 1
+            ? prev - slideCount
             : prev;
-      return Math.max(0, Math.min(MOBILE_SLIDES.length - 1, safeBase + dir));
+      return Math.max(0, Math.min(mobileSlides.length - 1, safeBase + dir));
     });
   };
 
   const handleTrackTransitionEnd = (e: React.TransitionEvent<HTMLDivElement>) => {
     if (e.target !== e.currentTarget || e.propertyName !== 'transform') return;
-    if (mobileTrackIdx < MOBILE_BASE_IDX) {
+    if (slideCount < 2) return;
+    if (mobileTrackIdx < mobileBaseIdx) {
       setMobileAnimate(false);
-      setMobileTrackIdx((prev) => prev + BESTSELLERS.length);
-    } else if (mobileTrackIdx >= MOBILE_BASE_IDX + BESTSELLERS.length) {
+      setMobileTrackIdx((prev) => prev + slideCount);
+    } else if (mobileTrackIdx >= mobileBaseIdx + slideCount) {
       setMobileAnimate(false);
-      setMobileTrackIdx((prev) => prev - BESTSELLERS.length);
+      setMobileTrackIdx((prev) => prev - slideCount);
     }
   };
 
@@ -375,6 +488,8 @@ export function Bestsellers({ onQuickView, onScrollToY }: BestsellersProps) {
     };
   }, [isDesktop]);
 
+  if (!activeBestseller || !activeMobileItem) return null;
+
   return (
     <section
       id="bestsellers"
@@ -383,13 +498,17 @@ export function Bestsellers({ onQuickView, onScrollToY }: BestsellersProps) {
       className="relative bg-[#F6F6F4]"
     >
       {isDesktop ? (
-        /* ================= DESKTOP PINNED STAGE (Asymmetric 2-col) ================= */
-        <div ref={desktopWrapperRef} className="relative h-[340vh]">
+        /* ================= DESKTOP PINNED STAGE (Dynamic 2..8 items) ================= */
+        <div
+          ref={desktopWrapperRef}
+          style={{ height: `${wrapperHeightVh}vh` }}
+          className="relative"
+        >
           <div
             ref={stickyStageRef}
             className="sticky top-0 h-screen w-full overflow-hidden bg-[#F6F6F4] z-10"
           >
-            {/* Optical Background Refraction Layer (Pre-softened drifting orbs + Parallax Index Watermark) */}
+            {/* Optical Background Refraction Layer */}
             <div aria-hidden="true" className="pointer-events-none absolute inset-0 overflow-hidden z-0">
               <div className="studio-orb-light animate-studio-drift-a absolute left-[6%] top-[14%] h-[480px] w-[480px] rounded-full" />
               <div className="studio-orb-dark animate-studio-drift-b absolute right-[10%] bottom-[8%] h-[440px] w-[440px] rounded-full" />
@@ -399,7 +518,7 @@ export function Bestsellers({ onQuickView, onScrollToY }: BestsellersProps) {
                 className="absolute right-[6%] top-1/2 -translate-y-1/2 will-change-transform select-none"
               >
                 <span className="font-display font-black leading-none tracking-[-0.05em] text-[clamp(14rem,25vw,23rem)] text-[#0B0B0B]/[0.045]">
-                  0{desktopActiveIdx + 1}
+                  0{safeDesktopIdx + 1}
                 </span>
               </div>
             </div>
@@ -430,14 +549,14 @@ export function Bestsellers({ onQuickView, onScrollToY }: BestsellersProps) {
                 <div className="flex items-center gap-6">
                   {/* Quick slide indicators */}
                   <div className="flex items-center gap-2">
-                    {BESTSELLERS.map((item, idx) => (
+                    {bestsellers.map((item, idx) => (
                       <button
                         key={item.id}
                         type="button"
                         onClick={() => jumpToDesktopSlide(idx)}
                         aria-label={`Перейти к бестселлеру ${idx + 1}: ${item.title}`}
                         className={`h-6 px-2 text-[11px] font-semibold tracking-[0.1em] transition-colors bg-transparent border-0 ${
-                          desktopActiveIdx === idx
+                          safeDesktopIdx === idx
                             ? 'text-[#0B0B0B] underline underline-offset-4'
                             : 'text-[#0B0B0B]/35 hover:text-[#0B0B0B]/70'
                         }`}
@@ -451,7 +570,7 @@ export function Bestsellers({ onQuickView, onScrollToY }: BestsellersProps) {
                   <div className="h-[2px] w-32 bg-black/12 overflow-hidden">
                     <div
                       ref={progressBarRef}
-                      style={{ transform: 'scaleX(0.25)' }}
+                      style={{ transform: `scaleX(${(1 / slideCount).toFixed(4)})` }}
                       className="h-full w-full bg-[#0B0B0B] origin-left will-change-transform"
                     />
                   </div>
@@ -462,7 +581,6 @@ export function Bestsellers({ onQuickView, onScrollToY }: BestsellersProps) {
               <div className="grid flex-1 grid-cols-12 items-center gap-8 min-h-0 py-4">
                 {/* LEFT (~58% / 7 cols): Horizontal Garment Track */}
                 <div className="col-span-7 relative h-full max-h-[68vh] overflow-hidden flex items-center">
-                  {/* Soft studio stage glow pulsing subtly when switching to model */}
                   <div
                     aria-hidden="true"
                     className={`pointer-events-none absolute inset-x-[10%] inset-y-[6%] rounded-3xl bg-radial from-white via-[#F1F1EE] to-transparent transition-all duration-500 ease-[cubic-bezier(0.22,1,0.36,1)] ${
@@ -472,19 +590,22 @@ export function Bestsellers({ onQuickView, onScrollToY }: BestsellersProps) {
 
                   <div
                     ref={trackRef}
-                    className="flex h-full w-[400%] shrink-0 items-center will-change-transform"
+                    style={{ width: `${slideCount * 100}%` }}
+                    className="flex h-full shrink-0 items-center will-change-transform"
                   >
-                    {BESTSELLERS.map((item, idx) => {
-                      const isCurrent = desktopActiveIdx === idx;
+                    {bestsellers.map((item, idx) => {
+                      const isCurrent = safeDesktopIdx === idx;
                       const showModelNow = desktopHoverModel && isCurrent;
                       return (
                         <div
                           key={item.id}
-                          style={{ contain: 'layout style' }}
-                          className="relative flex h-full w-1/4 shrink-0 items-center justify-center px-6"
+                          style={{
+                            width: `${(100 / slideCount).toFixed(6)}%`,
+                            contain: 'layout style',
+                          }}
+                          className="relative flex h-full shrink-0 items-center justify-center px-6"
                         >
                           <div className="relative flex h-[min(56vh,540px)] w-[min(100%,540px)] items-center justify-center">
-                            {/* Dual-layer floor shadow (pure CSS radial gradients, 0ms blur) */}
                             <div
                               aria-hidden="true"
                               className={`floor-shadow-contact pointer-events-none absolute bottom-2 rounded-full transition-all duration-500 ease-[cubic-bezier(0.22,1,0.36,1)] ${
@@ -504,40 +625,10 @@ export function Bestsellers({ onQuickView, onScrollToY }: BestsellersProps) {
                               }`}
                             />
 
-                            {/* Normalized garment cutout with gentle passive levitation while idle */}
-                            <div
-                              className={`absolute inset-0 flex items-center justify-center ${
-                                isCurrent && !showModelNow ? 'animate-garment-levitate' : ''
-                              }`}
-                            >
-                              <img
-                                src={item.image}
-                                alt={item.title}
-                                loading="eager"
-                                decoding="async"
-                                draggable={false}
-                                className={`max-h-[84%] max-w-[84%] object-contain transition-[opacity,transform,filter] duration-500 ease-[cubic-bezier(0.22,1,0.36,1)] motion-reduce:blur-none ${
-                                  showModelNow
-                                    ? 'opacity-0 scale-95 translate-y-2 blur-[5px]'
-                                    : isCurrent
-                                      ? 'cutout-shadow opacity-100 scale-100 translate-y-0 blur-0'
-                                      : 'opacity-100 scale-100 translate-y-0 blur-0'
-                                }`}
-                              />
-                            </div>
-
-                            {/* Normalized model cutout (grounded, no levitation) */}
-                            <img
-                              src={item.modelImage}
-                              alt={`${item.title} на модели`}
-                              loading="eager"
-                              decoding="async"
-                              draggable={false}
-                              className={`absolute inset-0 m-auto max-h-[94%] max-w-[88%] object-contain transition-[opacity,transform,filter] duration-500 ease-[cubic-bezier(0.22,1,0.36,1)] motion-reduce:blur-none ${
-                                showModelNow
-                                  ? 'cutout-shadow opacity-100 scale-100 translate-y-0 blur-0'
-                                  : 'opacity-0 scale-[1.03] -translate-y-2 blur-[5px] pointer-events-none'
-                              }`}
+                            <BestsellerSlideVisual
+                              item={item}
+                              isCurrent={isCurrent}
+                              showModelNow={showModelNow}
                             />
                           </div>
                         </div>
@@ -546,7 +637,7 @@ export function Bestsellers({ onQuickView, onScrollToY }: BestsellersProps) {
                   </div>
                 </div>
 
-                {/* RIGHT (~42% / 5 cols): Active Product Frosted Acrylic Card (single "Показать на модели" control) */}
+                {/* RIGHT (~42% / 5 cols): Active Product Frosted Acrylic Card */}
                 <div className="col-span-5 flex items-center pl-4 xl:pl-8">
                   <div
                     ref={(el) => {
@@ -586,22 +677,39 @@ export function Bestsellers({ onQuickView, onScrollToY }: BestsellersProps) {
                             Размеры
                           </span>
                           <div className="flex items-center gap-1.5">
-                            {activeBestseller.sizes.map((size) => (
-                              <button
-                                key={size}
-                                type="button"
-                                onClick={() => onQuickView(activeBestseller, size)}
-                                aria-label={`Открыть ${activeBestseller.title}, размер ${size}`}
-                                className="inline-flex h-7 min-w-8 items-center justify-center rounded-md border border-black/15 bg-white/55 px-2 text-[11px] font-semibold text-[#0B0B0B] transition-colors duration-200 hover:border-[#0B0B0B] hover:bg-[#0B0B0B] hover:text-[#F6F6F4]"
-                              >
-                                {size}
-                              </button>
-                            ))}
+                            {activeBestseller.sizes.map((size) => {
+                              const stock = getAvailableStock(activeBestseller.id, size);
+                              const isOut = stock <= 0;
+                              return (
+                                <button
+                                  key={size}
+                                  type="button"
+                                  disabled={isOut}
+                                  onClick={() => onQuickAdd(activeBestseller, size)}
+                                  title={
+                                    isOut
+                                      ? `${size} — Sold Out`
+                                      : `Добавить размер ${size} в корзину`
+                                  }
+                                  aria-label={
+                                    isOut
+                                      ? `${activeBestseller.title}, размер ${size} — нет в наличии`
+                                      : `Добавить ${activeBestseller.title}, размер ${size} в корзину`
+                                  }
+                                  className={`inline-flex h-7 min-w-8 items-center justify-center rounded-md border px-2 text-[11px] font-semibold transition-all duration-200 ${
+                                    isOut
+                                      ? 'border-black/10 bg-black/[0.03] text-[#0B0B0B]/35 line-through cursor-not-allowed'
+                                      : 'border-black/15 bg-white/55 text-[#0B0B0B] hover:border-[#0B0B0B] hover:bg-[#0B0B0B] hover:text-[#F6F6F4] active:scale-90'
+                                  }`}
+                                >
+                                  {size}
+                                </button>
+                              );
+                            })}
                           </div>
                         </div>
                       </div>
 
-                      {/* STRICT HOVER ONLY on desktop ("Показать на модели") + QuickView */}
                       <div className="flex items-center gap-3">
                         <OpticalButton
                           variant={desktopHoverModel ? 'dark' : 'outline'}
@@ -635,7 +743,6 @@ export function Bestsellers({ onQuickView, onScrollToY }: BestsellersProps) {
       ) : (
         /* ================= MOBILE INFINITE PEEKING CAROUSEL (NO PINNING) ================= */
         <div className="relative overflow-hidden border-t border-black/[0.06] py-16 sm:py-20 bg-[#F6F6F4]">
-          {/* Pre-Softened Ambient Mobile Studio Light Orbs */}
           <div aria-hidden="true" className="pointer-events-none absolute inset-0 overflow-hidden z-0">
             <div className="studio-orb-light animate-studio-drift-a absolute -left-16 bottom-24 h-72 w-72 rounded-full" />
             <div className="studio-orb-dark animate-studio-drift-b absolute -right-12 bottom-10 h-72 w-72 rounded-full" />
@@ -657,7 +764,6 @@ export function Bestsellers({ onQuickView, onScrollToY }: BestsellersProps) {
             style={{ touchAction: 'pan-y' }}
             className="relative z-10 w-full overflow-hidden py-3 select-none cursor-grab active:cursor-grabbing"
           >
-            {/* Floating Frosted Acrylic Side Arrows */}
             <button
               type="button"
               data-arrow="prev"
@@ -678,7 +784,6 @@ export function Bestsellers({ onQuickView, onScrollToY }: BestsellersProps) {
               <ChevronRight className="h-4 w-4" />
             </button>
 
-            {/* Horizontal Track (62% slide width -> 19% side margin + uniform neighbor peek) */}
             <div
               onTransitionEnd={handleTrackTransitionEnd}
               style={{
@@ -690,7 +795,7 @@ export function Bestsellers({ onQuickView, onScrollToY }: BestsellersProps) {
               }}
               className="flex w-full items-center will-change-transform"
             >
-              {MOBILE_SLIDES.map((item, slideIndex) => {
+              {mobileSlides.map((item, slideIndex) => {
                 const offset = slideIndex - mobileTrackIdx;
                 const isCurrentVisible = offset === 0;
                 const showingModel = isCurrentVisible && mobileShowModel;
@@ -713,7 +818,6 @@ export function Bestsellers({ onQuickView, onScrollToY }: BestsellersProps) {
                     className={`relative w-[62%] shrink-0 transition-all duration-450 ease-[cubic-bezier(0.22,1,0.36,1)] ${neighborTransformClass}`}
                   >
                     <div className="relative h-[280px] sm:h-[330px] w-full flex items-center justify-center">
-                      {/* Dual-layer floor shadow (pure CSS radial gradients) */}
                       <div
                         aria-hidden="true"
                         className={`floor-shadow-contact pointer-events-none absolute bottom-1.5 h-3 rounded-full transition-all duration-300 ${
@@ -735,40 +839,11 @@ export function Bestsellers({ onQuickView, onScrollToY }: BestsellersProps) {
                         }`}
                       />
 
-                      {/* Normalized garment cutout */}
-                      <div
-                        className={`absolute inset-0 flex items-center justify-center ${
-                          isCurrentVisible && !showingModel ? 'animate-garment-levitate' : ''
-                        }`}
-                      >
-                        <img
-                          src={item.image}
-                          alt={item.title}
-                          loading="eager"
-                          decoding="async"
-                          draggable={false}
-                          className={`max-h-[86%] max-w-[90%] object-contain transition-[opacity,transform,filter] duration-400 ease-[cubic-bezier(0.22,1,0.36,1)] motion-reduce:blur-none ${
-                            showingModel
-                              ? 'opacity-0 scale-95 blur-[5px]'
-                              : isCurrentVisible
-                                ? 'cutout-shadow opacity-100 scale-100 blur-0'
-                                : 'opacity-100 scale-100 blur-0'
-                          }`}
-                        />
-                      </div>
-
-                      {/* Normalized model cutout */}
-                      <img
-                        src={item.modelImage}
-                        alt={`${item.title} на модели`}
-                        loading="eager"
-                        decoding="async"
-                        draggable={false}
-                        className={`absolute inset-0 m-auto max-h-[96%] max-w-[90%] object-contain transition-[opacity,transform,filter] duration-400 ease-[cubic-bezier(0.22,1,0.36,1)] motion-reduce:blur-none ${
-                          showingModel
-                            ? 'cutout-shadow opacity-100 scale-100 blur-0'
-                            : 'opacity-0 scale-105 blur-[5px] pointer-events-none'
-                        }`}
+                      <BestsellerSlideVisual
+                        item={item}
+                        isCurrent={isCurrentVisible}
+                        showModelNow={showingModel}
+                        compact
                       />
                     </div>
                   </div>
@@ -800,22 +875,37 @@ export function Bestsellers({ onQuickView, onScrollToY }: BestsellersProps) {
                 {activeMobileItem.description}
               </p>
 
-              {/* Centered clickable sizes */}
+              {/* Centered clickable sizes with Sold Out state */}
               <div className="flex items-center justify-center gap-1.5 mb-5">
-                {activeMobileItem.sizes.map((size) => (
-                  <button
-                    key={size}
-                    type="button"
-                    onClick={() => onQuickView(activeMobileItem, size)}
-                    aria-label={`Выбрать ${activeMobileItem.title}, размер ${size}`}
-                    className="inline-flex h-7 min-w-8 items-center justify-center rounded-md border border-black/15 bg-white/75 px-2 text-[11px] font-semibold text-[#0B0B0B] transition-colors active:bg-[#0B0B0B] active:text-[#F6F6F4]"
-                  >
-                    {size}
-                  </button>
-                ))}
+                {activeMobileItem.sizes.map((size) => {
+                  const stock = getAvailableStock(activeMobileItem.id, size);
+                  const isOut = stock <= 0;
+                  return (
+                    <button
+                      key={size}
+                      type="button"
+                      disabled={isOut}
+                      onClick={() => onQuickAdd(activeMobileItem, size)}
+                      title={
+                        isOut ? `${size} — Sold Out` : `Добавить размер ${size} в корзину`
+                      }
+                      aria-label={
+                        isOut
+                          ? `${activeMobileItem.title}, размер ${size} — нет в наличии`
+                          : `Добавить ${activeMobileItem.title}, размер ${size} в корзину`
+                      }
+                      className={`inline-flex h-7 min-w-8 items-center justify-center rounded-md border px-2 text-[11px] font-semibold transition-all duration-150 ${
+                        isOut
+                          ? 'border-black/10 bg-black/[0.03] text-[#0B0B0B]/35 line-through cursor-not-allowed'
+                          : 'border-black/15 bg-white/75 text-[#0B0B0B] active:scale-90 active:bg-[#0B0B0B] active:text-[#F6F6F4]'
+                      }`}
+                    >
+                      {size}
+                    </button>
+                  );
+                })}
               </div>
 
-              {/* Tap toggle button ("Показать на модели") + QuickView */}
               <div className="flex items-center justify-center gap-2.5 mb-5">
                 <OpticalButton
                   variant={mobileShowModel ? 'dark' : 'outline'}
@@ -838,10 +928,9 @@ export function Bestsellers({ onQuickView, onScrollToY }: BestsellersProps) {
                 </OpticalButton>
               </div>
 
-              {/* Centered pagination dots + counter */}
               <div className="flex items-center justify-center gap-4 border-t border-black/10 pt-4">
                 <div className="flex items-center gap-2">
-                  {BESTSELLERS.map((item, idx) => (
+                  {bestsellers.map((item, idx) => (
                     <button
                       key={item.id}
                       type="button"
@@ -853,8 +942,8 @@ export function Bestsellers({ onQuickView, onScrollToY }: BestsellersProps) {
                     />
                   ))}
                 </div>
-                <span className="text-[10px] font-semibold uppercase tracking-[0.16em] text-[#0B0B0B]/50">
-                  0{realMobileIdx + 1} / 04
+                <span className="text-[10px] font-semibold uppercase tracking-[0.16em] text-[#0B0B0B]/50 tabular-nums">
+                  0{realMobileIdx + 1} / 0{slideCount}
                 </span>
               </div>
             </div>

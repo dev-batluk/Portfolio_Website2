@@ -1,17 +1,18 @@
 import { useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react';
 import { ScrollTrigger } from 'gsap/ScrollTrigger';
 import { ArrowUpRight, LayoutGrid, Square } from 'lucide-react';
-import {
-  CATALOG_CATEGORIES,
-  CATALOG_ITEMS,
-  type BaseProduct,
-  type CatalogItem,
-  type CategoryId,
+import type {
+  BaseProduct,
+  CatalogItem,
+  CategoryId,
 } from '../data/products';
+import { useStoreData } from '../context/StoreDataContext';
+import { useResolvedImage } from '../lib/imageStore';
 import { useInViewport } from './OpticalPrimitives';
 
 interface CatalogProps {
   onQuickView: (product: BaseProduct, initialSize?: string) => void;
+  onQuickAdd: (product: BaseProduct, size: string) => void;
   onScrollToY?: (y: number) => void;
 }
 
@@ -20,9 +21,15 @@ interface CatalogCardProps {
   index: number;
   filterCycle: number;
   onQuickView: (product: BaseProduct, initialSize?: string) => void;
+  onQuickAdd: (product: BaseProduct, size: string) => void;
 }
 
-function CatalogCard({ item, index, filterCycle, onQuickView }: CatalogCardProps) {
+function CatalogCard({ item, index, filterCycle, onQuickView, onQuickAdd }: CatalogCardProps) {
+  const { getAvailableStock, getTotalStock } = useStoreData();
+  const resolvedImage = useResolvedImage(item.image);
+  const totalStock = getTotalStock(item);
+  const extraPhotosCount = item.gallery?.length ?? 0;
+
   const frameRef = useRef<HTMLDivElement>(null);
   const rectRef = useRef<DOMRect | null>(null);
   const rafRef = useRef<number>(0);
@@ -95,41 +102,70 @@ function CatalogCard({ item, index, filterCycle, onQuickView }: CatalogCardProps
         className="specular-card relative aspect-[4/5] w-full overflow-hidden rounded-xl bg-[#EFEFED] border border-black/[0.06] transition-all duration-400 ease-[cubic-bezier(0.22,1,0.36,1)] lg:group-hover:border-black/22 lg:group-hover:shadow-[0_20px_44px_rgba(0,0,0,0.08)]"
       >
         {/* Desktop-only Frosted Glass Top Badges (hidden via visibility until hovered to eliminate idle backdrop-filter layers) */}
-        <div className="pointer-events-none invisible group-hover:visible group-focus-within:visible absolute top-3 left-3 right-3 z-20 hidden lg:flex items-center justify-between opacity-0 -translate-y-1.5 scale-[0.97] transition-[opacity,transform,visibility] duration-300 ease-[cubic-bezier(0.22,1,0.36,1)] group-hover:opacity-100 group-hover:translate-y-0 group-hover:scale-100">
-          <span className="acrylic-light-strong rounded-full px-2.5 py-1 text-[10px] font-semibold uppercase tracking-[0.14em] text-[#0B0B0B]/80">
-            {item.sku}
-          </span>
+        <div className="pointer-events-none invisible group-hover:visible group-focus-within:visible absolute top-3 left-3 right-3 z-20 hidden lg:flex items-center justify-between gap-2 opacity-0 -translate-y-1.5 scale-[0.97] transition-[opacity,transform,visibility] duration-300 ease-[cubic-bezier(0.22,1,0.36,1)] group-hover:opacity-100 group-hover:translate-y-0 group-hover:scale-100">
+          <div className="flex items-center gap-1.5">
+            <span className="acrylic-light-strong rounded-full px-2.5 py-1 text-[10px] font-semibold uppercase tracking-[0.14em] text-[#0B0B0B]/80">
+              {item.sku}
+            </span>
+            {extraPhotosCount > 0 && (
+              <span className="acrylic-light-strong rounded-full px-2 py-1 text-[10px] font-semibold text-[#0B0B0B]/70">
+                +{extraPhotosCount} фото
+              </span>
+            )}
+          </div>
           <span className="acrylic-light-strong inline-flex h-7 w-7 items-center justify-center rounded-full text-[#0B0B0B]">
             <ArrowUpRight className="h-3.5 w-3.5" />
           </span>
         </div>
 
+        {totalStock === 0 && (
+          <span className="acrylic-dark pointer-events-none absolute top-3 right-3 z-20 rounded-full px-2.5 py-1 text-[9px] font-bold uppercase tracking-[0.14em] text-[#F6F6F4]">
+            Sold Out
+          </span>
+        )}
+
         {/* Garment photo with studio multiply blend & crisp hover scale */}
         <img
-          src={item.image}
+          src={resolvedImage || item.image}
           alt={item.title}
           loading="lazy"
           decoding="async"
           draggable={false}
-          className="studio-blend relative z-10 h-full w-full object-contain p-2.5 sm:p-4 lg:p-5 transition-transform duration-700 ease-[cubic-bezier(0.22,1,0.36,1)] lg:group-hover:scale-[1.08]"
+          className={`studio-blend relative z-10 h-full w-full object-contain p-2.5 sm:p-4 lg:p-5 transition-transform duration-700 ease-[cubic-bezier(0.22,1,0.36,1)] lg:group-hover:scale-[1.08] ${
+            totalStock === 0 ? 'opacity-65' : ''
+          }`}
         />
 
         {/* Bottom Floating Frosted Glass Size Capsule (invisible until hover/focus so 20 idle backdrops don't stack) */}
         <div className="invisible group-hover:visible group-focus-within:visible absolute inset-x-2.5 bottom-2.5 z-20 hidden lg:flex items-center justify-between gap-1 rounded-full acrylic-light-strong px-2 py-1.5 opacity-0 translate-y-2.5 scale-[0.97] transition-[opacity,transform,visibility] duration-320 ease-[cubic-bezier(0.22,1,0.36,1)] group-hover:opacity-100 group-hover:translate-y-0 group-hover:scale-100 group-focus-within:opacity-100 group-focus-within:translate-y-0 group-focus-within:scale-100">
-          {item.sizes.map((size) => (
-            <button
-              key={size}
-              type="button"
-              onClick={(e) => {
-                e.stopPropagation();
-                onQuickView(item, size);
-              }}
-              aria-label={`Выбрать ${item.title}, размер ${size}`}
-              className="h-7 flex-1 min-w-7 rounded-full bg-transparent border-0 text-[10px] font-bold uppercase tracking-[0.06em] text-[#0B0B0B] transition-all duration-200 hover:bg-[#0B0B0B] hover:text-[#F6F6F4] active:scale-95"
-            >
-              {size}
-            </button>
-          ))}
+          {item.sizes.map((size) => {
+            const stock = getAvailableStock(item.id, size);
+            const isOut = stock <= 0;
+            return (
+              <button
+                key={size}
+                type="button"
+                disabled={isOut}
+                onClick={(e) => {
+                  e.stopPropagation();
+                  if (!isOut) onQuickAdd(item, size);
+                }}
+                title={isOut ? `${size} — Sold Out` : `Добавить размер ${size} в корзину`}
+                aria-label={
+                  isOut
+                    ? `${item.title}, размер ${size} — нет в наличии`
+                    : `Добавить ${item.title}, размер ${size} в корзину`
+                }
+                className={`h-7 flex-1 min-w-7 rounded-full bg-transparent border-0 text-[10px] font-bold uppercase tracking-[0.06em] transition-all duration-200 ${
+                  isOut
+                    ? 'text-[#0B0B0B]/30 line-through cursor-not-allowed'
+                    : 'text-[#0B0B0B] hover:bg-[#0B0B0B] hover:text-[#F6F6F4] active:scale-90'
+                }`}
+              >
+                {size}
+              </button>
+            );
+          })}
         </div>
       </div>
 
@@ -152,18 +188,46 @@ function CatalogCard({ item, index, filterCycle, onQuickView }: CatalogCardProps
   );
 }
 
-export function Catalog({ onQuickView, onScrollToY }: CatalogProps) {
+export function Catalog({ onQuickView, onQuickAdd, onScrollToY }: CatalogProps) {
   const sectionRef = useRef<HTMLElement>(null);
   const sidebarNavRef = useRef<HTMLElement>(null);
   const sidebarItemRefs = useRef<Record<string, HTMLButtonElement | null>>({});
   const mobileGridRef = useRef<HTMLDivElement>(null);
   const mobileItemRefs = useRef<Record<string, HTMLButtonElement | null>>({});
 
+  const { visibleCatalogItems, categories: dbCategories } = useStoreData();
   const inView = useInViewport(sectionRef, '200px');
 
   const [activeCategory, setActiveCategory] = useState<CategoryId>('all');
   const [filterCycle, setFilterCycle] = useState(0);
   const [mobileCols, setMobileCols] = useState<1 | 2>(2);
+
+  useEffect(() => {
+    if (
+      activeCategory !== 'all' &&
+      !dbCategories.some((c) => c.id === activeCategory)
+    ) {
+      setActiveCategory('all');
+    }
+  }, [activeCategory, dbCategories]);
+
+  const categories = useMemo(
+    () => [
+      {
+        id: 'all',
+        label: 'Все вещи',
+        count: visibleCatalogItems.length,
+      },
+      ...dbCategories.map((cat) => ({
+        id: cat.id,
+        label: cat.label,
+        count: visibleCatalogItems.filter((item) => item.category === cat.id).length,
+      })),
+    ],
+    [dbCategories, visibleCatalogItems],
+  );
+
+  const categorySignature = categories.map((c) => `${c.id}:${c.label}:${c.count}`).join('|');
 
   const [desktopHighlight, setDesktopHighlight] = useState({
     top: 0,
@@ -179,9 +243,9 @@ export function Catalog({ onQuickView, onScrollToY }: CatalogProps) {
   });
 
   const filteredItems = useMemo(() => {
-    if (activeCategory === 'all') return CATALOG_ITEMS;
-    return CATALOG_ITEMS.filter((item) => item.category === activeCategory);
-  }, [activeCategory]);
+    if (activeCategory === 'all') return visibleCatalogItems;
+    return visibleCatalogItems.filter((item) => item.category === activeCategory);
+  }, [activeCategory, visibleCatalogItems]);
 
   // Refresh downstream ScrollTrigger offsets whenever the grid height changes
   useEffect(() => {
@@ -195,7 +259,7 @@ export function Catalog({ onQuickView, onScrollToY }: CatalogProps) {
       cancelAnimationFrame(raf1);
       cancelAnimationFrame(raf2);
     };
-  }, [activeCategory, mobileCols]);
+  }, [activeCategory, mobileCols, filteredItems.length]);
 
   // Measure active category buttons for sliding desktop frosted backing & mobile obsidian pill
   useLayoutEffect(() => {
@@ -242,7 +306,7 @@ export function Catalog({ onQuickView, onScrollToY }: CatalogProps) {
       window.removeEventListener('resize', measureAll);
       observer?.disconnect();
     };
-  }, [activeCategory]);
+  }, [activeCategory, categorySignature]);
 
   const selectCategory = (catId: CategoryId) => {
     if (catId === activeCategory) return;
@@ -336,7 +400,7 @@ export function Catalog({ onQuickView, onScrollToY }: CatalogProps) {
               className="pointer-events-none absolute top-0 left-0 rounded-lg bg-[#0B0B0B] shadow-[inset_0_1px_0_rgba(255,255,255,0.18)] transition-[transform,width,height,opacity] duration-340 ease-[cubic-bezier(0.22,1,0.36,1)]"
             />
 
-            {CATALOG_CATEGORIES.map((cat) => {
+            {categories.map((cat) => {
               const isActive = activeCategory === cat.id;
               const shortLabel = cat.id === 'all' ? 'Все' : cat.label;
               return (
@@ -392,7 +456,7 @@ export function Catalog({ onQuickView, onScrollToY }: CatalogProps) {
                 <span className="absolute left-0 top-2.5 bottom-2.5 w-[2.5px] rounded-r-full bg-[#0B0B0B]" />
               </span>
 
-              {CATALOG_CATEGORIES.map((cat) => {
+              {categories.map((cat) => {
                 const isActive = activeCategory === cat.id;
                 return (
                   <button
@@ -423,21 +487,33 @@ export function Catalog({ onQuickView, onScrollToY }: CatalogProps) {
 
           {/* Product Grid: 2 cols (or 1 col toggleable) mobile, 2 cols tablet, 4 cols desktop */}
           <div className="flex-1 w-full">
-            <div
-              className={`grid ${
-                mobileCols === 2 ? 'grid-cols-2 gap-x-3 gap-y-6' : 'grid-cols-1 gap-y-8'
-              } md:grid-cols-2 md:gap-x-5 md:gap-y-10 lg:grid-cols-4`}
-            >
-              {filteredItems.map((item, idx) => (
-                <CatalogCard
-                  key={`${item.id}-${filterCycle}`}
-                  item={item}
-                  index={idx}
-                  filterCycle={filterCycle}
-                  onQuickView={onQuickView}
-                />
-              ))}
-            </div>
+            {filteredItems.length === 0 ? (
+              <div className="acrylic-light rounded-2xl p-10 text-center">
+                <p className="font-display text-sm font-bold uppercase text-[#0B0B0B] mb-1.5">
+                  В этой категории пока нет позиций
+                </p>
+                <p className="text-xs text-[#0B0B0B]/60">
+                  Выберите другую категорию или откройте раздел «Все вещи».
+                </p>
+              </div>
+            ) : (
+              <div
+                className={`grid ${
+                  mobileCols === 2 ? 'grid-cols-2 gap-x-3 gap-y-6' : 'grid-cols-1 gap-y-8'
+                } md:grid-cols-2 md:gap-x-5 md:gap-y-10 lg:grid-cols-4`}
+              >
+                {filteredItems.map((item, idx) => (
+                  <CatalogCard
+                    key={`${item.id}-${filterCycle}`}
+                    item={item}
+                    index={idx}
+                    filterCycle={filterCycle}
+                    onQuickView={onQuickView}
+                    onQuickAdd={onQuickAdd}
+                  />
+                ))}
+              </div>
+            )}
           </div>
         </div>
       </div>

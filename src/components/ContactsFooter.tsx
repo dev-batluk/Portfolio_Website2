@@ -8,12 +8,16 @@ import {
   useInViewport,
   useSpecularPointer,
 } from './OpticalPrimitives';
+import { useStoreData } from '../context/StoreDataContext';
+import type { LegalDocId } from './LegalModal';
 
 gsap.registerPlugin(ScrollTrigger);
 
 interface ContactsFooterProps {
   onNavigate: (sectionId: string) => void;
   onNotify: (message: string) => void;
+  onOpenLegal: (doc: LegalDocId) => void;
+  onOpenCookieSettings: () => void;
 }
 
 interface AcrylicContactCardProps {
@@ -41,7 +45,12 @@ function AcrylicContactCard({ eyebrow, title, subtitle }: AcrylicContactCardProp
   );
 }
 
-export function ContactsFooter({ onNavigate, onNotify }: ContactsFooterProps) {
+export function ContactsFooter({
+  onNavigate,
+  onNotify,
+  onOpenLegal,
+  onOpenCookieSettings,
+}: ContactsFooterProps) {
   const contactsRef = useRef<HTMLElement>(null);
   const footerWrapRef = useRef<HTMLDivElement>(null);
   const footerWordmarkRef = useRef<HTMLParagraphElement>(null);
@@ -51,6 +60,7 @@ export function ContactsFooter({ onNavigate, onNotify }: ContactsFooterProps) {
   const [wordmarkHovered, setWordmarkHovered] = useState(false);
 
   const inView = useInViewport(contactsRef, '200px');
+  const { settings } = useStoreData();
 
   // Smooth bottom reveal of the monumental NEVERMIND footer wordmark
   useEffect(() => {
@@ -130,7 +140,7 @@ export function ContactsFooter({ onNavigate, onNotify }: ContactsFooterProps) {
         data-inview={inView ? 'true' : 'false'}
         className="relative z-20 bg-[#F6F6F4] overflow-hidden"
       >
-        <FrostedSpecTicker />
+        <FrostedSpecTicker items={settings.tickerItems} />
 
         {/* Pre-Softened Ambient Studio Refraction Orbs */}
         <div aria-hidden="true" className="pointer-events-none absolute inset-0 overflow-hidden z-0">
@@ -188,13 +198,13 @@ export function ContactsFooter({ onNavigate, onNotify }: ContactsFooterProps) {
             <div className="lg:col-span-5 grid grid-cols-1 sm:grid-cols-2 gap-4 sm:gap-5 border-t border-black/10 pt-8 lg:border-t-0 lg:pt-0">
               <AcrylicContactCard
                 eyebrow="Шоурум"
-                title="Москва · Центр"
-                subtitle="Столешников переулок, приватная запись"
+                title={settings.showroomCity}
+                subtitle={settings.showroomAddress}
               />
               <AcrylicContactCard
                 eyebrow="Время работы"
-                title="Пн — Вс"
-                subtitle="12:00 — 21:00 по предварительному запросу"
+                title={settings.showroomHoursTitle}
+                subtitle={settings.showroomHoursSubtitle}
               />
             </div>
           </div>
@@ -216,7 +226,7 @@ export function ContactsFooter({ onNavigate, onNotify }: ContactsFooterProps) {
       {/* Dark Contrast Footer */}
       <footer id="footer" className="relative z-20 bg-[#0A0A0A] text-[#F6F6F4] pt-12 pb-6 sm:pb-10">
         <div className="mx-auto max-w-[1600px] px-5 sm:px-8 lg:px-12">
-          <div className="grid grid-cols-1 md:grid-cols-12 gap-8 border-b border-white/10 pb-12 mb-10 text-xs">
+          <div className="grid grid-cols-1 md:grid-cols-12 gap-8 border-b border-white/10 pb-10 mb-6 text-xs">
             <div className="md:col-span-5">
               <p className="font-display text-sm font-bold uppercase tracking-[0.14em] mb-3">
                 NEVERMIND
@@ -251,6 +261,48 @@ export function ContactsFooter({ onNavigate, onNotify }: ContactsFooterProps) {
               <p>Streetwear Portfolio Archive</p>
               <p className="text-white/70 font-semibold tracking-[0.08em]">/dev/batluk</p>
             </div>
+          </div>
+
+          {/* Legal & 152-FZ Links Strip */}
+          <div className="flex flex-wrap items-center justify-between gap-x-6 gap-y-2.5 border-b border-white/10 pb-6 mb-8 text-[11px] text-white/50">
+            <div className="flex flex-wrap items-center gap-x-5 gap-y-2">
+              <button
+                type="button"
+                onClick={() => onOpenLegal('privacy')}
+                className="bg-transparent border-0 p-0 text-white/55 hover:text-white underline underline-offset-4 transition-colors"
+              >
+                Политика конфиденциальности (152-ФЗ)
+              </button>
+              <button
+                type="button"
+                onClick={() => onOpenLegal('consent')}
+                className="bg-transparent border-0 p-0 text-white/55 hover:text-white underline underline-offset-4 transition-colors"
+              >
+                Согласие на обработку ПДн
+              </button>
+              <button
+                type="button"
+                onClick={() => onOpenLegal('terms')}
+                className="bg-transparent border-0 p-0 text-white/55 hover:text-white underline underline-offset-4 transition-colors"
+              >
+                Пользовательское соглашение
+              </button>
+              <button
+                type="button"
+                onClick={() => onOpenLegal('cookies')}
+                className="bg-transparent border-0 p-0 text-white/55 hover:text-white underline underline-offset-4 transition-colors"
+              >
+                Политика Cookie
+              </button>
+            </div>
+
+            <button
+              type="button"
+              onClick={onOpenCookieSettings}
+              className="bg-transparent border-0 p-0 text-white/65 hover:text-white font-semibold uppercase tracking-[0.08em] transition-colors"
+            >
+              Настройки Cookie
+            </button>
           </div>
 
           {/* Monumental Edge-to-Edge Wordmark with Scroll Rise & Silver Cursor Sheen */}

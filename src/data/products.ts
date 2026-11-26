@@ -1,10 +1,10 @@
-export type CategoryId =
-  | 'all'
-  | 'hoodies'
-  | 'sweatshirts'
-  | 'longsleeves'
-  | 'pants'
-  | 'jeans';
+export type CategoryId = string;
+
+export interface CatalogCategory {
+  id: string;
+  label: string;
+  sortOrder: number;
+}
 
 export interface CategoryMeta {
   id: CategoryId;
@@ -36,6 +36,9 @@ export interface BaseProduct {
   sizes: string[];
   image: string;
   modelImage?: string;
+  gallery?: string[];
+  stock?: Record<string, number>;
+  hidden?: boolean;
 }
 
 export interface BestsellerItem extends BaseProduct {
@@ -44,7 +47,7 @@ export interface BestsellerItem extends BaseProduct {
 }
 
 export interface CatalogItem extends BaseProduct {
-  category: Exclude<CategoryId, 'all'>;
+  category: string;
 }
 
 export const HERO_VARIANTS: HeroVariant[] = [

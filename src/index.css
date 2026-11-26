@@ -467,6 +467,111 @@ html.lenis body {
   animation: catalog-card-in 420ms var(--ease-editorial) both;
 }
 
+/* Frosted acrylic input surface with crisp optical focus halo */
+.acrylic-input {
+  background-color: rgba(255, 255, 255, 0.72);
+  -webkit-backdrop-filter: blur(8px);
+  backdrop-filter: blur(8px);
+  box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.85);
+  transition:
+    background-color 220ms var(--ease-editorial),
+    border-color 220ms var(--ease-editorial),
+    box-shadow 220ms var(--ease-editorial);
+}
+
+.acrylic-input:focus {
+  background-color: rgba(255, 255, 255, 0.95);
+  border-color: #0b0b0b;
+  box-shadow:
+    inset 0 1px 0 rgba(255, 255, 255, 0.95),
+    0 0 0 3px rgba(11, 11, 11, 0.07);
+  outline: none;
+}
+
+@keyframes cart-badge-pop {
+  0% {
+    transform: scale(0.72);
+    opacity: 0.5;
+  }
+  55% {
+    transform: scale(1.16);
+    opacity: 1;
+  }
+  100% {
+    transform: scale(1);
+    opacity: 1;
+  }
+}
+
+@keyframes cart-item-highlight {
+  0% {
+    box-shadow:
+      inset 0 0 0 1.5px rgba(11, 11, 11, 0.34),
+      0 0 0 4px rgba(11, 11, 11, 0.06);
+  }
+  100% {
+    box-shadow:
+      inset 0 1px 0 rgba(255, 255, 255, 0.78),
+      0 16px 40px -12px rgba(11, 11, 11, 0.08);
+  }
+}
+
+@keyframes field-shake {
+  0%,
+  100% {
+    transform: translateX(0);
+  }
+  25% {
+    transform: translateX(-4px);
+  }
+  55% {
+    transform: translateX(4px);
+  }
+  80% {
+    transform: translateX(-2px);
+  }
+}
+
+@keyframes receipt-ring {
+  0% {
+    transform: scale(0.82);
+    opacity: 0.45;
+  }
+  100% {
+    transform: scale(1.65);
+    opacity: 0;
+  }
+}
+
+@keyframes bar-sheen {
+  0% {
+    transform: translateX(-100%);
+  }
+  100% {
+    transform: translateX(220%);
+  }
+}
+
+.animate-cart-badge-pop {
+  animation: cart-badge-pop 340ms var(--ease-editorial) both;
+}
+
+.animate-cart-item-highlight {
+  animation: cart-item-highlight 900ms var(--ease-editorial) both;
+}
+
+.animate-field-shake {
+  animation: field-shake 300ms ease-out both;
+}
+
+.animate-receipt-ring {
+  animation: receipt-ring 900ms var(--ease-editorial) forwards;
+}
+
+.animate-bar-sheen {
+  animation: bar-sheen 900ms var(--ease-editorial) both;
+}
+
 /* Pause off-screen ambient animations & active track-scroll levitation cleanly */
 [data-inview="false"] .animate-studio-drift-a,
 [data-inview="false"] .animate-studio-drift-b,
@@ -483,7 +588,12 @@ html.lenis body {
   .animate-garment-levitate,
   .animate-shadow-breathe,
   .animate-optical-roll-in,
-  .animate-catalog-card-in {
+  .animate-catalog-card-in,
+  .animate-cart-badge-pop,
+  .animate-cart-item-highlight,
+  .animate-field-shake,
+  .animate-receipt-ring,
+  .animate-bar-sheen {
     animation: none !important;
   }
 

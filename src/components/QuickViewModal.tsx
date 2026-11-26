@@ -1,13 +1,15 @@
-import { useEffect, useRef, useState } from 'react';
-import { Check, Search, X } from 'lucide-react';
+import { useEffect, useMemo, useRef, useState } from 'react';
+import { Search, ShoppingBag, X } from 'lucide-react';
 import type { BaseProduct } from '../data/products';
+import { useStoreData } from '../context/StoreDataContext';
+import { useResolvedImage } from '../lib/imageStore';
 import { OpticalButton, RollingText } from './OpticalPrimitives';
 
 interface QuickViewModalProps {
   product: BaseProduct | null;
   initialSize?: string;
   onClose: () => void;
-  onNotify: (message: string) => void;
+  onAddToCart: (product: BaseProduct, size: string) => void;
 }
 
 const FIT_GUIDE: Record<string, string> = {
@@ -18,17 +20,61 @@ const FIT_GUIDE: Record<string, string> = {
   XL: 'Рекомендуемый рост 188–198 см · Максимальный силуэт',
 };
 
+function QuickViewThumb({
+  src,
+  active,
+  hasModel,
+  index,
+  onSelect,
+}: {
+  src: string;
+  active: boolean;
+  hasModel: boolean;
+  index: number;
+  onSelect: () => void;
+}) {
+  const resolved = useResolvedImage(src);
+
+  return (
+    <button
+      type="button"
+      onClick={(e) => {
+        e.stopPropagation();
+        onSelect();
+      }}
+      aria-label={`Показать ракурс ${index + 1}`}
+      aria-pressed={active}
+      className={`h-9 w-8 sm:h-10 sm:w-9 shrink-0 overflow-hidden rounded-lg border p-0.5 transition-all duration-200 ${
+        active
+          ? 'border-[#0B0B0B] bg-white shadow-[0_4px_12px_rgba(0,0,0,0.12)] scale-105'
+          : 'border-black/12 bg-white/75 opacity-70 hover:opacity-100'
+      }`}
+    >
+      <img
+        src={resolved || src}
+        alt=""
+        draggable={false}
+        className={`h-full w-full object-contain ${
+          hasModel ? 'cutout-shadow' : 'studio-blend'
+        }`}
+      />
+    </button>
+  );
+}
+
 export function QuickViewModal({
   product,
   initialSize,
   onClose,
-  onNotify,
+  onAddToCart,
 }: QuickViewModalProps) {
+  const { getAvailableStock, getProductById } = useStoreData();
+
   const [renderedProduct, setRenderedProduct] = useState<BaseProduct | null>(product);
   const [isVisible, setIsVisible] = useState(false);
   const [selectedSize, setSelectedSize] = useState<string>('');
   const [viewMode, setViewMode] = useState<'garment' | 'model'>('garment');
-  const [requested, setRequested] = useState(false);
+  const [activeFrameIdx, setActiveFrameIdx] = useState(0);
   const [isZooming, setIsZooming] = useState(false);
 
   const stageRef = useRef<HTMLDivElement>(null);
@@ -50,14 +96,22 @@ export function QuickViewModal({
       window.matchMedia('(prefers-reduced-motion: reduce)').matches;
 
     if (product) {
-      setRenderedProduct(product);
-      const defaultSize =
-        initialSize && product.sizes.includes(initialSize)
+      const liveProduct = getProductById(product.id) ?? product;
+      setRenderedProduct(liveProduct);
+
+      const firstAvailableSize =
+        initialSize &&
+        liveProduct.sizes.includes(initialSize) &&
+        getAvailableStock(liveProduct.id, initialSize) > 0
           ? initialSize
-          : (product.sizes[1] ?? product.sizes[0] ?? 'M');
-      setSelectedSize(defaultSize);
+          : (liveProduct.sizes.find((s) => getAvailableStock(liveProduct.id, s) > 0) ??
+              liveProduct.sizes[1] ??
+              liveProduct.sizes[0] ??
+              'M');
+
+      setSelectedSize(firstAvailableSize);
       setViewMode('garment');
-      setRequested(false);
+      setActiveFrameIdx(0);
       setIsZooming(false);
 
       if (prefersReduced) {
@@ -83,7 +137,7 @@ export function QuickViewModal({
       setRenderedProduct(null);
     }, 280);
     return () => window.clearTimeout(timer);
-  }, [product, initialSize]);
+  }, [product, initialSize, getAvailableStock, getProductById]);
 
   useEffect(() => {
     if (!product) return;
@@ -94,16 +148,25 @@ export function QuickViewModal({
     return () => window.removeEventListener('keydown', onKeyDown);
   }, [product, onClose]);
 
+  const garmentFrames = useMemo(() => {
+    if (!renderedProduct) return [];
+    return [renderedProduct.image, ...(renderedProduct.gallery ?? [])].filter(Boolean);
+  }, [renderedProduct]);
+
+  const activeFrameRaw =
+    garmentFrames[activeFrameIdx] ?? garmentFrames[0] ?? renderedProduct?.image ?? '';
+  const resolvedGarmentSrc = useResolvedImage(activeFrameRaw);
+  const resolvedModelSrc = useResolvedImage(renderedProduct?.modelImage);
+
   if (!renderedProduct) return null;
 
   const hasModel = Boolean(renderedProduct.modelImage);
   const showingModel = hasModel && viewMode === 'model';
-  const fitHint = FIT_GUIDE[selectedSize] ?? `Размер ${selectedSize} · ${renderedProduct.fit}`;
-
-  const handleStubOrder = () => {
-    setRequested(true);
-    onNotify(`Заявка-заглушка: ${renderedProduct.title} (${selectedSize})`);
-  };
+  const selectedSizeStock = getAvailableStock(renderedProduct.id, selectedSize);
+  const fitHint =
+    selectedSizeStock <= 0
+      ? `Размер ${selectedSize} временно распродан (Sold Out)`
+      : (FIT_GUIDE[selectedSize] ?? `Размер ${selectedSize} · ${renderedProduct.fit}`);
 
   const handleStagePointerEnter = (e: React.PointerEvent<HTMLDivElement>) => {
     if (e.pointerType === 'touch') return;
@@ -179,13 +242,13 @@ export function QuickViewModal({
           <X className="h-4 w-4" />
         </button>
 
-        {/* Left Image Stage with 1.65x Interactive Optical Loupe */}
+        {/* Left Image Stage with 1.65x Interactive Optical Loupe & Optional Extra Photos Gallery */}
         <div
           ref={stageRef}
           onPointerEnter={handleStagePointerEnter}
           onPointerMove={handleStagePointerMove}
           onPointerLeave={handleStagePointerLeave}
-          className="md:col-span-6 relative h-[205px] sm:h-[260px] md:h-auto md:min-h-[520px] bg-[#ECECE8]/85 overflow-hidden flex items-center justify-center p-4 sm:p-8 lg:cursor-zoom-in"
+          className="md:col-span-6 relative h-[215px] sm:h-[265px] md:h-auto md:min-h-[520px] bg-[#ECECE8]/85 overflow-hidden flex items-center justify-center p-4 sm:p-8 lg:cursor-zoom-in"
         >
           <span className="hidden md:inline-flex acrylic-light-strong absolute top-4 left-4 z-20 rounded-full px-2.5 py-1 text-[10px] font-semibold uppercase tracking-[0.16em] text-[#0B0B0B]/70 pointer-events-none">
             {renderedProduct.sku}
@@ -203,13 +266,36 @@ export function QuickViewModal({
             <span>1.65× · Фактура</span>
           </span>
 
+          {/* Extra Garment Photos Strip (appears automatically when gallery has extra photos) */}
+          {garmentFrames.length > 1 && !showingModel && (
+            <div
+              onMouseEnter={() => setIsZooming(false)}
+              className="acrylic-light-strong absolute top-3 left-3 md:top-14 md:left-4 z-20 flex md:flex-col items-center gap-1.5 rounded-xl p-1.5 cursor-default max-w-[75%] md:max-w-none overflow-x-auto no-scrollbar"
+            >
+              {garmentFrames.map((frameSrc, idx) => (
+                <QuickViewThumb
+                  key={`${frameSrc}-${idx}`}
+                  src={frameSrc}
+                  active={idx === activeFrameIdx}
+                  hasModel={hasModel}
+                  index={idx}
+                  onSelect={() => {
+                    setActiveFrameIdx(idx);
+                    setIsZooming(false);
+                  }}
+                />
+              ))}
+            </div>
+          )}
+
           {/* Garment layer */}
           <img
+            key={activeFrameRaw}
             ref={garmentImgRef}
-            src={renderedProduct.image}
+            src={resolvedGarmentSrc || activeFrameRaw}
             alt={renderedProduct.title}
             draggable={false}
-            className={`max-h-[168px] sm:max-h-[225px] md:max-h-[420px] w-full object-contain transition-[opacity,filter,transform] duration-300 ease-[cubic-bezier(0.22,1,0.36,1)] motion-reduce:blur-none ${
+            className={`animate-optical-roll-in max-h-[172px] sm:max-h-[225px] md:max-h-[420px] w-full object-contain transition-[opacity,filter,transform] duration-300 ease-[cubic-bezier(0.22,1,0.36,1)] motion-reduce:blur-none ${
               hasModel ? 'cutout-shadow' : 'studio-blend'
             } ${
               showingModel
@@ -222,10 +308,10 @@ export function QuickViewModal({
           {hasModel && renderedProduct.modelImage && (
             <img
               ref={modelImgRef}
-              src={renderedProduct.modelImage}
+              src={resolvedModelSrc || renderedProduct.modelImage}
               alt={`${renderedProduct.title} на модели`}
               draggable={false}
-              className={`cutout-shadow absolute inset-0 m-auto max-h-[178px] sm:max-h-[235px] md:max-h-[440px] w-[85%] object-contain transition-[opacity,filter,transform] duration-300 ease-[cubic-bezier(0.22,1,0.36,1)] motion-reduce:blur-none ${
+              className={`cutout-shadow absolute inset-0 m-auto max-h-[182px] sm:max-h-[235px] md:max-h-[440px] w-[85%] object-contain transition-[opacity,filter,transform] duration-300 ease-[cubic-bezier(0.22,1,0.36,1)] motion-reduce:blur-none ${
                 showingModel
                   ? 'opacity-100 blur-0'
                   : 'opacity-0 blur-[4px] pointer-events-none'
@@ -237,7 +323,7 @@ export function QuickViewModal({
           {hasModel && (
             <div
               onMouseEnter={() => setIsZooming(false)}
-              className="acrylic-light-strong absolute bottom-4 left-1/2 -translate-x-1/2 z-20 p-1 rounded-full grid grid-cols-2 w-[214px] cursor-default"
+              className="acrylic-light-strong absolute bottom-3.5 left-1/2 -translate-x-1/2 z-20 p-1 rounded-full grid grid-cols-2 w-[214px] cursor-default"
             >
               <span
                 aria-hidden="true"
@@ -314,24 +400,38 @@ export function QuickViewModal({
               </div>
             </div>
 
-            {/* Interactive Size Selector + Live Fit Guide */}
+            {/* Interactive Size Selector with Sold Out States + Live Fit Guide */}
             <div className="mb-5 md:mb-8">
-              <p className="text-[11px] font-semibold uppercase tracking-[0.14em] text-[#0B0B0B]/55 mb-2.5">
-                Выберите размер
-              </p>
+              <div className="flex items-center justify-between gap-2 mb-2.5">
+                <p className="text-[11px] font-semibold uppercase tracking-[0.14em] text-[#0B0B0B]/55">
+                  Выберите размер
+                </p>
+                {selectedSizeStock > 0 && selectedSizeStock <= 2 && (
+                  <span className="text-[10px] font-semibold uppercase tracking-[0.1em] text-[#0B0B0B]/55">
+                    Осталось {selectedSizeStock} шт.
+                  </span>
+                )}
+              </div>
+
               <div className="flex flex-wrap gap-2">
                 {renderedProduct.sizes.map((size) => {
+                  const stock = getAvailableStock(renderedProduct.id, size);
+                  const isOut = stock <= 0;
                   const active = selectedSize === size;
                   return (
                     <button
                       key={size}
                       type="button"
+                      disabled={isOut}
                       onClick={() => setSelectedSize(size)}
                       aria-pressed={active}
+                      title={isOut ? `${size} — Sold Out` : `Размер ${size}`}
                       className={`h-10 min-w-12 rounded-lg border px-3 text-xs font-bold uppercase tracking-[0.06em] transition-all duration-200 ${
-                        active
-                          ? 'border-[#0B0B0B] bg-[#0B0B0B] text-[#F6F6F4] shadow-[inset_0_1px_0_rgba(255,255,255,0.18)]'
-                          : 'border-black/12 bg-white/75 text-[#0B0B0B] hover:border-black/40'
+                        isOut
+                          ? 'border-black/10 bg-black/[0.03] text-[#0B0B0B]/35 line-through cursor-not-allowed'
+                          : active
+                            ? 'border-[#0B0B0B] bg-[#0B0B0B] text-[#F6F6F4] shadow-[inset_0_1px_0_rgba(255,255,255,0.18)]'
+                            : 'border-black/12 bg-white/75 text-[#0B0B0B] hover:border-black/40'
                       }`}
                     >
                       {size}
@@ -342,7 +442,7 @@ export function QuickViewModal({
 
               <div className="mt-3 overflow-hidden">
                 <p
-                  key={selectedSize}
+                  key={`${selectedSize}-${selectedSizeStock}`}
                   className="animate-optical-roll-in text-[11px] font-medium text-[#0B0B0B]/62"
                 >
                   {fitHint}
@@ -353,16 +453,15 @@ export function QuickViewModal({
 
           <OpticalButton
             variant="dark"
-            onClick={handleStubOrder}
-            className="h-12 w-full px-6 text-xs font-semibold uppercase tracking-[0.1em]"
+            disabled={selectedSizeStock <= 0}
+            onClick={() => onAddToCart(renderedProduct, selectedSize)}
+            leadingIcon={<ShoppingBag className="h-4 w-4 shrink-0" />}
+            className="h-12 w-full px-6 text-xs font-semibold uppercase tracking-[0.1em] disabled:opacity-45 disabled:cursor-not-allowed"
           >
-            {requested ? (
-              <>
-                <Check className="h-4 w-4 shrink-0" />
-                <span>Размер {selectedSize} выбран · Демо-запрос</span>
-              </>
+            {selectedSizeStock <= 0 ? (
+              <span>Нет в наличии · Sold Out</span>
             ) : (
-              <RollingText text={`Оформить запрос · Размер ${selectedSize}`} />
+              <RollingText text={`Добавить в корзину · ${renderedProduct.priceFormatted}`} />
             )}
           </OpticalButton>
         </div>

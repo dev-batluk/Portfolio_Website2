@@ -6,6 +6,7 @@ import {
   useInViewport,
   useSpecularPointer,
 } from './OpticalPrimitives';
+import { useStoreData } from '../context/StoreDataContext';
 
 gsap.registerPlugin(ScrollTrigger);
 
@@ -69,6 +70,7 @@ export function About() {
   const pillarRefs = useRef<(HTMLDivElement | null)[]>([]);
 
   const inView = useInViewport(sectionRef, '180px');
+  const { settings } = useStoreData();
 
   useEffect(() => {
     const prefersReduced =
@@ -161,7 +163,7 @@ export function About() {
       className="relative z-10 bg-[#F6F6F4] overflow-hidden"
     >
       {/* Top Frosted Spec Divider Ribbon */}
-      <FrostedSpecTicker />
+      <FrostedSpecTicker items={settings.tickerItems} />
 
       {/* Background Optical Refraction Layer (Watermark + Pre-Softened Drifting Studio Orbs) */}
       <div aria-hidden="true" className="pointer-events-none absolute inset-0 overflow-hidden z-0">

@@ -4,10 +4,13 @@ node_modules/
 # Build output
 dist/
 
+# Local SQLite DB & uploads
+/data/
+
 # Local backups & raw source media (not needed in Git/Vercel)
-backups/
-photos/
-references/
+/backups/
+/photos/
+/references/
 
 # Vercel CLI
 .vercel/
@@ -15,6 +18,7 @@ references/
 # Environment files
 .env
 .env.*
+!.env.example
 
 # Logs & OS artifacts
 *.log

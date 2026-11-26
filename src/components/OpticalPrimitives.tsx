@@ -328,7 +328,8 @@ const ARCHIVE_SPECS = [
  * Slim 30px frosted acrylic divider ribbon that drifts continuously while
  * in-viewport using a cached track width (zero per-frame layout reflows).
  */
-export function FrostedSpecTicker() {
+export function FrostedSpecTicker({ items }: { items?: string[] }) {
+  const specs = items && items.length > 0 ? items : ARCHIVE_SPECS;
   const containerRef = useRef<HTMLDivElement>(null);
   const trackRef = useRef<HTMLDivElement>(null);
 
@@ -390,11 +391,11 @@ export function FrostedSpecTicker() {
       resizeObserver?.disconnect();
       io?.disconnect();
     };
-  }, []);
+  }, [specs]);
 
   const renderGroup = (suffix: string) => (
     <div className="flex shrink-0 items-center">
-      {ARCHIVE_SPECS.map((spec, idx) => (
+      {specs.map((spec, idx) => (
         <span
           key={`${suffix}-${idx}`}
           className="inline-flex items-center gap-5 px-5 text-[10px] font-semibold uppercase tracking-[0.22em] text-[#0B0B0B]/60 whitespace-nowrap"

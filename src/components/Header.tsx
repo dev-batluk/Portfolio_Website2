@@ -1,6 +1,6 @@
 import { useEffect, useLayoutEffect, useRef, useState } from 'react';
-import { Menu, X } from 'lucide-react';
-import { useSpecularPointer } from './OpticalPrimitives';
+import { Menu, ShoppingBag, X } from 'lucide-react';
+import { RollingText, useSpecularPointer } from './OpticalPrimitives';
 
 export interface NavSection {
   id: string;
@@ -18,7 +18,9 @@ const NAV_ITEMS: NavSection[] = [
 interface HeaderProps {
   activeSection: string;
   isOverDark: boolean;
+  cartCount: number;
   onNavigate: (sectionId: string) => void;
+  onOpenCart: () => void;
   onMobileMenuChange?: (open: boolean) => void;
 }
 
@@ -71,10 +73,64 @@ function MagneticNavLink({
   );
 }
 
+interface HeaderCartButtonProps {
+  cartCount: number;
+  isDarkSurface: boolean;
+  onClick: () => void;
+}
+
+function HeaderCartButton({
+  cartCount,
+  isDarkSurface,
+  onClick,
+}: HeaderCartButtonProps) {
+  const pointerRef = useSpecularPointer<HTMLButtonElement>({
+    magnetic: true,
+    strength: 3,
+  });
+
+  return (
+    <button
+      ref={pointerRef}
+      type="button"
+      onClick={onClick}
+      aria-label={
+        cartCount > 0 ? `Открыть корзину, товаров: ${cartCount}` : 'Открыть корзину'
+      }
+      className={`optical-trigger group relative inline-flex h-9 items-center rounded-full border px-2.5 lg:px-3 text-xs font-semibold uppercase tracking-[0.1em] transition-colors duration-250 ${
+        isDarkSurface
+          ? 'specular-dark border-white/15 bg-white/[0.08] text-[#F6F6F4] hover:bg-white/[0.16]'
+          : 'specular-light border-black/10 bg-white/65 text-[#0B0B0B] hover:border-black/25 hover:bg-white'
+      }`}
+    >
+      <span className="relative z-10 inline-flex items-center gap-2">
+        <ShoppingBag className="h-4 w-4 shrink-0 transition-transform duration-300 ease-[cubic-bezier(0.22,1,0.36,1)] group-hover:-rotate-6 group-hover:scale-105" />
+        <span className="hidden lg:inline-flex">
+          <RollingText text="Корзина" />
+        </span>
+        {cartCount > 0 && (
+          <span
+            key={cartCount}
+            className={`animate-cart-badge-pop inline-flex h-5 min-w-5 items-center justify-center rounded-full px-1.5 text-[10px] font-bold tabular-nums ${
+              isDarkSurface
+                ? 'bg-[#F6F6F4] text-[#0B0B0B]'
+                : 'bg-[#0B0B0B] text-[#F6F6F4]'
+            }`}
+          >
+            {cartCount}
+          </span>
+        )}
+      </span>
+    </button>
+  );
+}
+
 export function Header({
   activeSection,
   isOverDark,
+  cartCount,
   onNavigate,
+  onOpenCart,
   onMobileMenuChange,
 }: HeaderProps) {
   const [isScrolled, setIsScrolled] = useState(false);
@@ -168,9 +224,11 @@ export function Header({
     ? 'max-w-[1600px] h-16 px-5 sm:px-8 rounded-none text-[#F6F6F4] bg-transparent border-b border-white/10'
     : isCapsule
       ? isOverDark
-        ? 'max-w-[820px] h-13 md:h-14 px-4 sm:px-5 lg:px-6 rounded-full acrylic-dark text-[#F6F6F4]'
-        : 'max-w-[820px] h-13 md:h-14 px-4 sm:px-5 lg:px-6 rounded-full acrylic-light-strong text-[#0B0B0B]'
+        ? 'max-w-[920px] h-13 md:h-14 px-4 sm:px-5 lg:px-6 rounded-full acrylic-dark text-[#F6F6F4]'
+        : 'max-w-[920px] h-13 md:h-14 px-4 sm:px-5 lg:px-6 rounded-full acrylic-light-strong text-[#0B0B0B]'
       : 'max-w-[1600px] h-16 md:h-[72px] px-5 sm:px-8 lg:px-12 rounded-none bg-transparent border border-transparent text-[#0B0B0B]';
+
+  const isDarkSurface = isOverDark || mobileMenuOpen;
 
   return (
     <>
@@ -180,7 +238,7 @@ export function Header({
         }`}
       >
         <div
-          className={`pointer-events-auto mx-auto flex items-center justify-between transition-all duration-500 ease-[cubic-bezier(0.22,1,0.36,1)] ${containerThemeClass}`}
+          className={`pointer-events-auto relative mx-auto flex items-center justify-between transition-all duration-500 ease-[cubic-bezier(0.22,1,0.36,1)] ${containerThemeClass}`}
         >
           {/* LEFT: Navigation links with sliding frosted capsule pill */}
           <nav
@@ -222,21 +280,39 @@ export function Header({
             onClick={() => updateMobileMenu(!mobileMenuOpen)}
             aria-label={mobileMenuOpen ? 'Закрыть меню' : 'Открыть меню'}
             aria-expanded={mobileMenuOpen}
-            className="lg:hidden inline-flex items-center gap-2.5 bg-transparent border-0 p-1 text-xs font-semibold uppercase tracking-[0.14em]"
+            className="lg:hidden inline-flex items-center gap-2 bg-transparent border-0 p-1 text-xs font-semibold uppercase tracking-[0.14em]"
           >
             {mobileMenuOpen ? <X className="h-5 w-5" /> : <Menu className="h-5 w-5" />}
-            <span>Меню</span>
+            <span className="hidden min-[360px]:inline">Меню</span>
           </button>
 
-          {/* RIGHT: NEVERMIND brand logo */}
-          <button
-            type="button"
-            onClick={() => handleNavClick('hero')}
-            aria-label="NEVERMIND — на главную"
-            className="bg-transparent border-0 p-0 font-display text-sm sm:text-base font-extrabold tracking-[0.16em] uppercase transition-opacity duration-200 hover:opacity-70"
-          >
-            NEVERMIND
-          </button>
+          {/* RIGHT: Centered Brand on Mobile + Brand + Divider + Cart on Desktop */}
+          <div className="flex items-center gap-3 lg:gap-4">
+            <button
+              type="button"
+              onClick={() => handleNavClick('hero')}
+              aria-label="NEVERMIND — на главную"
+              className="absolute left-1/2 -translate-x-1/2 lg:static lg:translate-x-0 bg-transparent border-0 p-0 font-display text-sm sm:text-base font-extrabold tracking-[0.16em] uppercase transition-opacity duration-200 hover:opacity-70"
+            >
+              NEVERMIND
+            </button>
+
+            <span
+              aria-hidden="true"
+              className={`hidden lg:block h-4 w-px transition-colors duration-300 ${
+                isDarkSurface ? 'bg-white/15' : 'bg-black/12'
+              }`}
+            />
+
+            <HeaderCartButton
+              cartCount={cartCount}
+              isDarkSurface={isDarkSurface}
+              onClick={() => {
+                updateMobileMenu(false);
+                onOpenCart();
+              }}
+            />
+          </div>
         </div>
       </header>
 
