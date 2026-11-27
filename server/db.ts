@@ -7,7 +7,7 @@ import {
   createSeedPromos,
   createSeedSettings,
   formatRub,
-} from './seedData.ts';
+} from './seedData.js';
 import {
   execDdl,
   execute,
@@ -18,8 +18,8 @@ import {
   queryOne,
   runTransaction,
   type SqlExecutor,
-} from './sqlClient.ts';
-import { slugifyCategoryLabel } from './validation.ts';
+} from './sqlClient.js';
+import { slugifyCategoryLabel } from './validation.js';
 import type {
   AdminBootstrapPayload,
   AdminOrder,
@@ -36,7 +36,7 @@ import type {
   PublicPromoHint,
   StoreSettings,
   StorefrontPayload,
-} from './types.ts';
+} from './types.js';
 
 export class StoreServiceError extends Error {
   readonly status: number;
@@ -90,7 +90,7 @@ function syncSizesWithStock(sizes: string[], stock: Record<string, number>): str
 async function seedTablesInsideTransaction(tx: SqlExecutor): Promise<void> {
   for (const cat of SEED_CATEGORIES) {
     await tx.execute(
-      'INSERT INTO categories (id, label, sort_order) VALUES (?, ?, ?)',
+      'INSERT INTO categories (id, label, sort_order) VALUES (?, ?, ?) ON CONFLICT DO NOTHING',
       [cat.id, cat.label, cat.sortOrder],
     );
   }
@@ -104,7 +104,8 @@ async function seedTablesInsideTransaction(tx: SqlExecutor): Promise<void> {
         id, sku, category, category_label, title, price, description,
         material, fit, sizes_json, image, gallery_json, stock_json,
         hidden, sort_order, created_at
-      ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+      ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+      ON CONFLICT DO NOTHING`,
       [
         p.id,
         p.sku,
@@ -134,7 +135,8 @@ async function seedTablesInsideTransaction(tx: SqlExecutor): Promise<void> {
         id, tag, sku, category_label, title, price, description,
         material, fit, sizes_json, image, model_image, gallery_json,
         stock_json, hidden, sort_order
-      ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+      ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+      ON CONFLICT DO NOTHING`,
       [
         b.id,
         b.tag,
@@ -162,7 +164,8 @@ async function seedTablesInsideTransaction(tx: SqlExecutor): Promise<void> {
     const ts = new Date(Date.now() - (seedPromos.length - idx) * 1000).toISOString();
     await tx.execute(
       `INSERT INTO promos (id, code, type, value, min_order_amount, active, usage_count, created_at)
-       VALUES (?, ?, ?, ?, ?, ?, ?, ?)`,
+       VALUES (?, ?, ?, ?, ?, ?, ?, ?)
+       ON CONFLICT DO NOTHING`,
       [
         promo.id,
         promo.code.toUpperCase(),
@@ -183,7 +186,8 @@ async function seedTablesInsideTransaction(tx: SqlExecutor): Promise<void> {
         status, payment_status, customer_json, delivery_json, items_json,
         subtotal, promo_code, discount_amount, delivery_cost, grand_total,
         manager_note, cancel_reason, stock_deducted, history_json
-      ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+      ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+      ON CONFLICT DO NOTHING`,
       [
         ord.id,
         ord.orderNumber,
@@ -667,25 +671,24 @@ export async function getDbStats(): Promise<DbRetentionStats> {
 
 export async function getStorefrontData(): Promise<StorefrontPayload> {
   await ensureDbReady();
-  const categories = (
-    await queryAll<Record<string, unknown>>('SELECT * FROM categories ORDER BY sort_order ASC')
-  ).map(rowToCategory);
+  const [categoryRows, productRows, bestsellerRows, firstActivePromo, settings] =
+    await Promise.all([
+      queryAll<Record<string, unknown>>('SELECT * FROM categories ORDER BY sort_order ASC'),
+      queryAll<Record<string, unknown>>(
+        'SELECT * FROM products WHERE hidden = 0 ORDER BY sort_order ASC',
+      ),
+      queryAll<Record<string, unknown>>(
+        'SELECT * FROM bestsellers WHERE hidden = 0 ORDER BY sort_order ASC',
+      ),
+      queryOne<Record<string, unknown>>(
+        'SELECT code, type, value, min_order_amount FROM promos WHERE active = 1 ORDER BY created_at ASC, id ASC LIMIT 1',
+      ),
+      readSettings(),
+    ]);
 
-  const catalogItems = (
-    await queryAll<Record<string, unknown>>(
-      'SELECT * FROM products WHERE hidden = 0 ORDER BY sort_order ASC',
-    )
-  ).map(rowToProduct);
-
-  const bestsellers = (
-    await queryAll<Record<string, unknown>>(
-      'SELECT * FROM bestsellers WHERE hidden = 0 ORDER BY sort_order ASC',
-    )
-  ).map(rowToBestseller);
-
-  const firstActivePromo = await queryOne<Record<string, unknown>>(
-    'SELECT code, type, value, min_order_amount FROM promos WHERE active = 1 ORDER BY created_at ASC, id ASC LIMIT 1',
-  );
+  const categories = categoryRows.map(rowToCategory);
+  const catalogItems = productRows.map(rowToProduct);
+  const bestsellers = bestsellerRows.map(rowToBestseller);
 
   const publicPromoHint: PublicPromoHint | null = firstActivePromo
     ? {
@@ -704,7 +707,7 @@ export async function getStorefrontData(): Promise<StorefrontPayload> {
     categories,
     catalogItems,
     bestsellers,
-    settings: await readSettings(),
+    settings,
     publicPromoHint,
   };
 }
@@ -712,36 +715,27 @@ export async function getStorefrontData(): Promise<StorefrontPayload> {
 export async function getAdminBootstrap(): Promise<AdminBootstrapPayload> {
   await purgeExpiredCompletedOrders(false);
 
-  const categories = (
-    await queryAll<Record<string, unknown>>('SELECT * FROM categories ORDER BY sort_order ASC')
-  ).map(rowToCategory);
-
-  const catalogItems = (
-    await queryAll<Record<string, unknown>>('SELECT * FROM products ORDER BY sort_order ASC')
-  ).map(rowToProduct);
-
-  const bestsellers = (
-    await queryAll<Record<string, unknown>>('SELECT * FROM bestsellers ORDER BY sort_order ASC')
-  ).map(rowToBestseller);
-
-  const orders = (
-    await queryAll<Record<string, unknown>>('SELECT * FROM orders ORDER BY created_at DESC')
-  ).map(rowToOrder);
-
-  const promos = (
-    await queryAll<Record<string, unknown>>(
-      'SELECT * FROM promos ORDER BY created_at DESC, id DESC',
-    )
-  ).map(rowToPromo);
+  const [categoryRows, productRows, bestsellerRows, orderRows, promoRows, settings, dbStats] =
+    await Promise.all([
+      queryAll<Record<string, unknown>>('SELECT * FROM categories ORDER BY sort_order ASC'),
+      queryAll<Record<string, unknown>>('SELECT * FROM products ORDER BY sort_order ASC'),
+      queryAll<Record<string, unknown>>('SELECT * FROM bestsellers ORDER BY sort_order ASC'),
+      queryAll<Record<string, unknown>>('SELECT * FROM orders ORDER BY created_at DESC'),
+      queryAll<Record<string, unknown>>(
+        'SELECT * FROM promos ORDER BY created_at DESC, id DESC',
+      ),
+      readSettings(),
+      getDbStats(),
+    ]);
 
   return {
-    categories,
-    catalogItems,
-    bestsellers,
-    orders,
-    promos,
-    settings: await readSettings(),
-    dbStats: await getDbStats(),
+    categories: categoryRows.map(rowToCategory),
+    catalogItems: productRows.map(rowToProduct),
+    bestsellers: bestsellerRows.map(rowToBestseller),
+    orders: orderRows.map(rowToOrder),
+    promos: promoRows.map(rowToPromo),
+    settings,
+    dbStats,
   };
 }
 

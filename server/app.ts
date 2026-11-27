@@ -35,7 +35,7 @@ import {
   updateStoreSettings,
   validatePromoForSubtotal,
   writeAuditLog,
-} from './db.ts';
+} from './db.js';
 import {
   SESSION_COOKIE_NAME,
   SESSION_TTL_SECONDS,
@@ -53,7 +53,7 @@ import {
   verifyAdminCredentials,
   verifySameOrigin,
   verifySignedSessionToken,
-} from './security.ts';
+} from './security.js';
 import {
   bestsellerInputSchema,
   bestsellerPatchSchema,
@@ -74,7 +74,7 @@ import {
   settingsPatchSchema,
   validatePromoSchema,
   verifyImageMagicBytes,
-} from './validation.ts';
+} from './validation.js';
 
 class PayloadError extends Error {
   readonly status: number;
@@ -109,26 +109,32 @@ function sendJson(
 }
 
 async function readJsonBody(req: IncomingMessage, maxBytes = DEFAULT_JSON_LIMIT): Promise<unknown> {
-  // On Vercel Node.js Functions (@vercel/node), req.body may already be pre-parsed
-  const preParsedReq = req as IncomingMessage & { body?: unknown };
-  if (preParsedReq.body !== undefined) {
-    if (preParsedReq.body === null) return {};
-    if (typeof preParsedReq.body === 'string') {
-      if (Buffer.byteLength(preParsedReq.body, 'utf8') > maxBytes) {
+  // On Vercel Node.js Functions (@vercel/node), req.body may already be pre-parsed (getter may throw on invalid JSON)
+  let preParsedBody: unknown;
+  try {
+    preParsedBody = (req as IncomingMessage & { body?: unknown }).body;
+  } catch {
+    throw new PayloadError(400, 'Некорректный JSON в теле запроса');
+  }
+
+  if (preParsedBody !== undefined) {
+    if (preParsedBody === null) return {};
+    if (typeof preParsedBody === 'string') {
+      if (Buffer.byteLength(preParsedBody, 'utf8') > maxBytes) {
         throw new PayloadError(413, 'Слишком большой размер запроса');
       }
-      if (!preParsedReq.body.trim()) return {};
+      if (!preParsedBody.trim()) return {};
       try {
-        return JSON.parse(preParsedReq.body);
+        return JSON.parse(preParsedBody);
       } catch {
         throw new PayloadError(400, 'Некорректный JSON в теле запроса');
       }
     }
-    if (Buffer.isBuffer(preParsedReq.body)) {
-      if (preParsedReq.body.length > maxBytes) {
+    if (Buffer.isBuffer(preParsedBody)) {
+      if (preParsedBody.length > maxBytes) {
         throw new PayloadError(413, 'Слишком большой размер запроса');
       }
-      const text = preParsedReq.body.toString('utf8').trim();
+      const text = preParsedBody.toString('utf8').trim();
       if (!text) return {};
       try {
         return JSON.parse(text);
@@ -136,12 +142,12 @@ async function readJsonBody(req: IncomingMessage, maxBytes = DEFAULT_JSON_LIMIT)
         throw new PayloadError(400, 'Некорректный JSON в теле запроса');
       }
     }
-    if (typeof preParsedReq.body === 'object') {
-      const serializedSize = Buffer.byteLength(JSON.stringify(preParsedReq.body), 'utf8');
+    if (typeof preParsedBody === 'object') {
+      const serializedSize = Buffer.byteLength(JSON.stringify(preParsedBody), 'utf8');
       if (serializedSize > maxBytes) {
         throw new PayloadError(413, 'Слишком большой размер запроса');
       }
-      return preParsedReq.body;
+      return preParsedBody;
     }
   }
 
@@ -241,66 +247,66 @@ export async function handleApiRequest(
   req: IncomingMessage,
   res: ServerResponse,
 ): Promise<void> {
-  const method = (req.method || 'GET').toUpperCase();
-  const url = new URL(req.url || '/', `http://${req.headers.host || 'localhost'}`);
-  const pathname = url.pathname;
-  const ip = getClientIp(req);
-
-  const generalLimit = checkRateLimit('api_general', ip, 240, 60_000);
-  if (!generalLimit.allowed) {
-    sendJson(
-      req,
-      res,
-      429,
-      { error: 'Слишком много запросов. Повторите через минуту.', code: 'RATE_LIMITED' },
-      {
-        noStore: true,
-        extraHeaders: { 'Retry-After': String(generalLimit.retryAfterSec) },
-      },
-    );
-    return;
-  }
-  recordRateLimitHit('api_general', ip, 60_000);
-
-  if (method === 'OPTIONS') {
-    applySecurityHeaders(req, res, { urlPath: pathname });
-    res.statusCode = 204;
-    res.end();
-    return;
-  }
-
-  const isMutating =
-    method === 'POST' || method === 'PATCH' || method === 'PUT' || method === 'DELETE';
-  const isCronPath = pathname === '/api/cleanup-orders';
-
-  if (isMutating && !isCronPath) {
-    if (!verifySameOrigin(req)) {
-      sendJson(
-        req,
-        res,
-        403,
-        { error: 'Запрещённый источник запроса', code: 'FORBIDDEN_ORIGIN' },
-        { noStore: true },
-      );
-      return;
-    }
-
-    if (
-      (pathname.startsWith('/api/admin/') || pathname === '/api/auth/logout') &&
-      !hasFetchCsrfHeader(req)
-    ) {
-      sendJson(
-        req,
-        res,
-        403,
-        { error: 'Отсутствует обязательный заголовок запроса', code: 'CSRF_HEADER_MISSING' },
-        { noStore: true },
-      );
-      return;
-    }
-  }
-
   try {
+    const method = (req.method || 'GET').toUpperCase();
+    const url = new URL(req.url || '/', 'http://localhost');
+    const pathname = url.pathname;
+    const ip = getClientIp(req);
+
+    const generalLimit = checkRateLimit('api_general', ip, 240, 60_000);
+    if (!generalLimit.allowed) {
+      sendJson(
+        req,
+        res,
+        429,
+        { error: 'Слишком много запросов. Повторите через минуту.', code: 'RATE_LIMITED' },
+        {
+          noStore: true,
+          extraHeaders: { 'Retry-After': String(generalLimit.retryAfterSec) },
+        },
+      );
+      return;
+    }
+    recordRateLimitHit('api_general', ip, 60_000);
+
+    if (method === 'OPTIONS') {
+      applySecurityHeaders(req, res, { urlPath: pathname });
+      res.statusCode = 204;
+      res.end();
+      return;
+    }
+
+    const isMutating =
+      method === 'POST' || method === 'PATCH' || method === 'PUT' || method === 'DELETE';
+    const isCronPath = pathname === '/api/cleanup-orders';
+
+    if (isMutating && !isCronPath) {
+      if (!verifySameOrigin(req)) {
+        sendJson(
+          req,
+          res,
+          403,
+          { error: 'Запрещённый источник запроса', code: 'FORBIDDEN_ORIGIN' },
+          { noStore: true },
+        );
+        return;
+      }
+
+      if (
+        (pathname.startsWith('/api/admin/') || pathname === '/api/auth/logout') &&
+        !hasFetchCsrfHeader(req)
+      ) {
+        sendJson(
+          req,
+          res,
+          403,
+          { error: 'Отсутствует обязательный заголовок запроса', code: 'CSRF_HEADER_MISSING' },
+          { noStore: true },
+        );
+        return;
+      }
+    }
+
     // 1. Health & Storefront
     if (method === 'GET' && pathname === '/api/health') {
       sendJson(req, res, 200, {
@@ -312,7 +318,11 @@ export async function handleApiRequest(
     }
 
     if (method === 'GET' && pathname === '/api/storefront') {
-      await purgeExpiredCompletedOrders(false);
+      try {
+        await purgeExpiredCompletedOrders(false);
+      } catch (purgeErr) {
+        console.error('[STOREFRONT PURGE WARN]', purgeErr);
+      }
       const data = await getStorefrontData();
       sendJson(req, res, 200, data, { noStore: true });
       return;

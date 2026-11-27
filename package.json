@@ -8,12 +8,13 @@
   },
   "scripts": {
     "dev": "node server/dev.ts",
-    "dev:api": "node server/index.ts --port 3001 --api-only",
+    "dev:api": "tsc -p tsconfig.server.json && node dist-server/server/index.js --port 3001 --api-only",
     "dev:web": "vite",
-    "start": "node server/index.ts",
+    "build:server": "tsc -p tsconfig.server.json",
+    "start": "tsc -p tsconfig.server.json && node dist-server/server/index.js",
     "typecheck": "tsc -b && tsc -p tsconfig.server.json --noEmit",
     "build": "tsc -b && tsc -p tsconfig.server.json --noEmit && vite build",
-    "preview": "node server/index.ts"
+    "preview": "tsc -p tsconfig.server.json && node dist-server/server/index.js"
   },
   "dependencies": {
     "@neondatabase/serverless": "^1.2.1",

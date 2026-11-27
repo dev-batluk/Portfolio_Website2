@@ -1,4 +1,4 @@
-import { BESTSELLERS, CATALOG_ITEMS } from '../src/data/products.ts';
+import { BESTSELLERS, CATALOG_ITEMS } from '../src/data/products.js';
 import type {
   AdminOrder,
   BestsellerProduct,
@@ -11,7 +11,7 @@ import type {
   PaymentStatus,
   PromoCodeRule,
   StoreSettings,
-} from './types.ts';
+} from './types.js';
 
 const rubFormatter = new Intl.NumberFormat('ru-RU');
 

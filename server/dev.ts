@@ -1,9 +1,17 @@
-import { spawn } from 'node:child_process';
+import { spawn, spawnSync } from 'node:child_process';
 import path from 'node:path';
+
+const tscBin = path.join(process.cwd(), 'node_modules', 'typescript', 'bin', 'tsc');
+const buildRes = spawnSync(process.execPath, [tscBin, '-p', 'tsconfig.server.json'], {
+  stdio: 'inherit',
+});
+if (buildRes.status !== 0) {
+  process.exit(buildRes.status ?? 1);
+}
 
 const apiChild = spawn(
   process.execPath,
-  ['server/index.ts', '--port', '3001', '--api-only'],
+  ['dist-server/server/index.js', '--port', '3001', '--api-only'],
   { stdio: 'inherit' },
 );
 

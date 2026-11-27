@@ -1,13 +1,13 @@
 import fs from 'node:fs';
 import http from 'node:http';
 import path from 'node:path';
-import { handleApiRequest } from './app.ts';
+import { handleApiRequest } from './app.js';
 import {
   getDbLocationDescription,
   getRetentionDays,
   purgeExpiredCompletedOrders,
-} from './db.ts';
-import { applySecurityHeaders, getAuthBannerMeta } from './security.ts';
+} from './db.js';
+import { applySecurityHeaders, getAuthBannerMeta } from './security.js';
 
 function loadDotEnv(): void {
   const envPath = path.join(process.cwd(), '.env');
